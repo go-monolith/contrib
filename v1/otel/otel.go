@@ -22,8 +22,9 @@ type Middleware struct {
 	mu     sync.RWMutex
 
 	// Metrics instruments
-	meter          metric.Meter
-	messageCounter metric.Int64Counter
+	meter                metric.Meter
+	messageCounter       metric.Int64Counter
+	requestReplyDuration metric.Float64Histogram
 
 	// Tracing
 	tracer trace.Tracer

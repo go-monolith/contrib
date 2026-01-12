@@ -2,6 +2,7 @@ package otel
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-monolith/mono/pkg/types"
 	"go.opentelemetry.io/otel"
@@ -12,6 +13,8 @@ import (
 const (
 	// metricMessageCount is the name of the message count metric.
 	metricMessageCount = "mono.message.count"
+	// metricRequestReplyDuration is the name of the request-reply duration metric.
+	metricRequestReplyDuration = "mono.service.request_reply.duration"
 
 	// Attribute keys
 	attrModuleName  = "module_name"
@@ -59,6 +62,15 @@ func (m *Middleware) initMetrics() error {
 		return err
 	}
 
+	m.requestReplyDuration, err = m.meter.Float64Histogram(
+		metricRequestReplyDuration,
+		metric.WithDescription("Duration of request-reply handler execution"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -82,14 +94,40 @@ func (m *Middleware) recordMetrics(
 	m.messageCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
 }
 
+// recordRequestReplyDuration records the duration of a request-reply handler invocation.
+func (m *Middleware) recordRequestReplyDuration(
+	ctx context.Context,
+	moduleName, serviceName string,
+	err error,
+	duration float64,
+) {
+	if !m.config.MetricsEnabled || m.requestReplyDuration == nil {
+		return
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String(attrModuleName, moduleName),
+		attribute.String(attrServiceName, serviceName),
+		attribute.String(attrServiceType, serviceTypeRequestReply),
+		attribute.Bool(attrError, err != nil),
+	}
+
+	m.requestReplyDuration.Record(ctx, duration, metric.WithAttributes(attrs...))
+}
+
 // wrapRequestReplyHandlerWithMetrics wraps a RequestReply handler to record metrics.
 func (m *Middleware) wrapRequestReplyHandlerWithMetrics(
 	original types.RequestReplyHandler,
 	moduleName, serviceName string,
 ) types.RequestReplyHandler {
 	return func(ctx context.Context, msg *types.Msg) ([]byte, error) {
+		start := time.Now()
 		resp, err := original(ctx, msg)
+		duration := time.Since(start).Seconds()
+
 		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeRequestReply, err)
+		m.recordRequestReplyDuration(ctx, moduleName, serviceName, err, duration)
+
 		return resp, err
 	}
 }

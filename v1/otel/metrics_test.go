@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-monolith/contrib/v1/otel/internal/testutil"
 	"github.com/go-monolith/mono/pkg/types"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
@@ -103,12 +104,29 @@ func TestMetricsLabels(t *testing.T) {
 	}
 }
 
-func checkAttribute(t *testing.T, attrs any, key, expectedValue string) {
+func checkAttribute(t *testing.T, attrs attribute.Set, key, expectedValue string) {
 	t.Helper()
-	// Note: In real tests, we would iterate over attributes to check values
-	// This is a simplified version that verifies the attrs parameter is not nil
-	if attrs == nil {
-		t.Errorf("attrs is nil, expected non-nil with key %q", key)
+	val, ok := attrs.Value(attribute.Key(key))
+	if !ok {
+		t.Errorf("attribute %q not found", key)
+		return
+	}
+	var actual string
+	switch val.Type() {
+	case attribute.BOOL:
+		if val.AsBool() {
+			actual = "true"
+		} else {
+			actual = "false"
+		}
+	case attribute.STRING:
+		actual = val.AsString()
+	default:
+		t.Errorf("unsupported attribute type for key %q: %v", key, val.Type())
+		return
+	}
+	if actual != expectedValue {
+		t.Errorf("attribute %q = %v, want %q", key, actual, expectedValue)
 	}
 }
 
@@ -125,6 +143,9 @@ func TestMetricsDisabled(t *testing.T) {
 
 	// Should not panic when recording metrics
 	mw.recordMetrics(context.Background(), "test-module", "test-service", serviceTypeRequestReply, nil)
+
+	// Should not panic when recording duration
+	mw.recordRequestReplyDuration(context.Background(), "test-module", "test-service", nil, 0.5)
 }
 
 func TestAllHandlerTypesMetrics(t *testing.T) {
@@ -238,5 +259,211 @@ func TestAllHandlerTypesMetrics(t *testing.T) {
 				t.Error("metric not recorded")
 			}
 		})
+	}
+}
+
+func TestRequestReplyDurationRecording(t *testing.T) {
+	tp := testutil.NewTestMeterProvider()
+	defer func() { _ = tp.Shutdown() }()
+
+	mw, err := New(WithMeterProvider(tp.Provider))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = mw.Start(context.Background())
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Record a duration metric
+	mw.recordRequestReplyDuration(context.Background(), "test-module", "test-service", nil, 0.123)
+
+	// Collect metrics
+	rm, err := tp.Collect()
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	// Find the duration metric
+	found := false
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == metricRequestReplyDuration {
+				found = true
+				hist, ok := m.Data.(metricdata.Histogram[float64])
+				if !ok {
+					t.Fatalf("metric data type = %T, want Histogram[float64]", m.Data)
+				}
+				if len(hist.DataPoints) == 0 {
+					t.Fatal("no data points in histogram")
+				}
+				if hist.DataPoints[0].Count != 1 {
+					t.Errorf("histogram count = %d, want 1", hist.DataPoints[0].Count)
+				}
+			}
+		}
+	}
+
+	if !found {
+		t.Error("duration metric not found")
+	}
+}
+
+func TestRequestReplyDurationLabels(t *testing.T) {
+	tp := testutil.NewTestMeterProvider()
+	defer func() { _ = tp.Shutdown() }()
+
+	mw, err := New(WithMeterProvider(tp.Provider))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = mw.Start(context.Background())
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Record a duration metric
+	mw.recordRequestReplyDuration(context.Background(), "test-module", "test-service", nil, 0.5)
+
+	// Collect metrics
+	rm, err := tp.Collect()
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	// Find and verify labels
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == metricRequestReplyDuration {
+				hist, ok := m.Data.(metricdata.Histogram[float64])
+				if !ok {
+					t.Fatalf("metric data type = %T, want Histogram[float64]", m.Data)
+				}
+				if len(hist.DataPoints) == 0 {
+					t.Fatal("no data points in histogram")
+				}
+
+				attrs := hist.DataPoints[0].Attributes
+				checkAttribute(t, attrs, attrModuleName, "test-module")
+				checkAttribute(t, attrs, attrServiceName, "test-service")
+				checkAttribute(t, attrs, attrServiceType, serviceTypeRequestReply)
+				checkAttribute(t, attrs, attrError, "false")
+			}
+		}
+	}
+}
+
+func TestRequestReplyDurationWithError(t *testing.T) {
+	tp := testutil.NewTestMeterProvider()
+	defer func() { _ = tp.Shutdown() }()
+
+	mw, err := New(WithMeterProvider(tp.Provider))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = mw.Start(context.Background())
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Record a duration metric with error
+	mw.recordRequestReplyDuration(context.Background(), "test-module", "test-service", errors.New("test error"), 0.25)
+
+	// Collect metrics
+	rm, err := tp.Collect()
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	// Find and verify error attribute
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == metricRequestReplyDuration {
+				hist, ok := m.Data.(metricdata.Histogram[float64])
+				if !ok {
+					t.Fatalf("metric data type = %T, want Histogram[float64]", m.Data)
+				}
+				if len(hist.DataPoints) == 0 {
+					t.Fatal("no data points in histogram")
+				}
+
+				attrs := hist.DataPoints[0].Attributes
+				checkAttribute(t, attrs, attrError, "true")
+			}
+		}
+	}
+}
+
+func TestRequestReplyHandlerRecordsDuration(t *testing.T) {
+	tp := testutil.NewTestMeterProvider()
+	defer func() { _ = tp.Shutdown() }()
+
+	mw, err := New(WithMeterProvider(tp.Provider))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = mw.Start(context.Background())
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Create a request-reply handler that takes some time
+	called := false
+	reg := types.ServiceRegistration{
+		Name:       "test-service",
+		ModuleName: "test-module",
+		Type:       types.ServiceTypeRequestReply,
+		RequestHandler: func(ctx context.Context, msg *types.Msg) ([]byte, error) {
+			called = true
+			return []byte("ok"), nil
+		},
+	}
+
+	result := mw.OnServiceRegistration(context.Background(), reg)
+	_, _ = result.RequestHandler(context.Background(), &types.Msg{})
+
+	if !called {
+		t.Error("original handler should be called")
+	}
+
+	// Collect metrics
+	rm, err := tp.Collect()
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	// Verify both counter and histogram were recorded
+	foundCounter := false
+	foundHistogram := false
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == metricMessageCount {
+				foundCounter = true
+			}
+			if m.Name == metricRequestReplyDuration {
+				foundHistogram = true
+				hist, ok := m.Data.(metricdata.Histogram[float64])
+				if !ok {
+					t.Fatalf("metric data type = %T, want Histogram[float64]", m.Data)
+				}
+				if len(hist.DataPoints) == 0 {
+					t.Fatal("no data points in histogram")
+				}
+				if hist.DataPoints[0].Count != 1 {
+					t.Errorf("histogram count = %d, want 1", hist.DataPoints[0].Count)
+				}
+			}
+		}
+	}
+
+	if !foundCounter {
+		t.Error("counter metric not recorded")
+	}
+	if !foundHistogram {
+		t.Error("histogram metric not recorded")
 	}
 }

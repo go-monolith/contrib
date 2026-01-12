@@ -128,12 +128,12 @@ func (m *Middleware) OnServiceRegistration(
 	case types.ServiceTypeRequestReply:
 		if reg.RequestHandler != nil {
 			handler := reg.RequestHandler
-			// Apply tracing first (outer), then metrics (inner)
-			if m.config.TracesEnabled {
-				handler = m.wrapRequestReplyHandlerWithTracing(handler, moduleName, serviceName)
-			}
+			// Apply metrics first (inner), then tracing (outer) to preserve span context in metrics
 			if m.config.MetricsEnabled {
 				handler = m.wrapRequestReplyHandlerWithMetrics(handler, moduleName, serviceName)
+			}
+			if m.config.TracesEnabled {
+				handler = m.wrapRequestReplyHandlerWithTracing(handler, moduleName, serviceName)
 			}
 			reg.RequestHandler = handler
 		}
@@ -143,11 +143,11 @@ func (m *Middleware) OnServiceRegistration(
 			wrapped := make([]types.QGHP, len(reg.QueueHandlers))
 			for i, pair := range reg.QueueHandlers {
 				handler := pair.Handler
-				if m.config.TracesEnabled {
-					handler = m.wrapQueueGroupHandlerWithTracing(handler, moduleName, serviceName)
-				}
 				if m.config.MetricsEnabled {
 					handler = m.wrapQueueGroupHandlerWithMetrics(handler, moduleName, serviceName)
+				}
+				if m.config.TracesEnabled {
+					handler = m.wrapQueueGroupHandlerWithTracing(handler, moduleName, serviceName)
 				}
 				wrapped[i] = types.QGHP{
 					QueueGroup: pair.QueueGroup,
@@ -160,11 +160,11 @@ func (m *Middleware) OnServiceRegistration(
 	case types.ServiceTypeStreamConsumer:
 		if reg.StreamHandler != nil {
 			handler := reg.StreamHandler
-			if m.config.TracesEnabled {
-				handler = m.wrapStreamConsumerHandlerWithTracing(handler, moduleName, serviceName)
-			}
 			if m.config.MetricsEnabled {
 				handler = m.wrapStreamConsumerHandlerWithMetrics(handler, moduleName, serviceName)
+			}
+			if m.config.TracesEnabled {
+				handler = m.wrapStreamConsumerHandlerWithTracing(handler, moduleName, serviceName)
 			}
 			reg.StreamHandler = handler
 		}
@@ -205,11 +205,11 @@ func (m *Middleware) OnEventConsumerRegistration(
 	eventName := entry.EventDef.Name
 
 	handler := entry.Handler
-	if m.config.TracesEnabled {
-		handler = m.wrapEventConsumerHandlerWithTracing(handler, moduleName, eventName)
-	}
 	if m.config.MetricsEnabled {
 		handler = m.wrapEventConsumerHandlerWithMetrics(handler, moduleName, eventName)
+	}
+	if m.config.TracesEnabled {
+		handler = m.wrapEventConsumerHandlerWithTracing(handler, moduleName, eventName)
 	}
 	entry.Handler = handler
 
@@ -232,11 +232,11 @@ func (m *Middleware) OnEventStreamConsumerRegistration(
 	eventName := entry.EventDef.Name
 
 	handler := entry.Handler
-	if m.config.TracesEnabled {
-		handler = m.wrapEventStreamConsumerHandlerWithTracing(handler, moduleName, eventName)
-	}
 	if m.config.MetricsEnabled {
 		handler = m.wrapEventStreamConsumerHandlerWithMetrics(handler, moduleName, eventName)
+	}
+	if m.config.TracesEnabled {
+		handler = m.wrapEventStreamConsumerHandlerWithTracing(handler, moduleName, eventName)
 	}
 	entry.Handler = handler
 

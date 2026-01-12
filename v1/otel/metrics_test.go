@@ -26,7 +26,7 @@ func TestMetricsRecording(t *testing.T) {
 	}
 
 	// Record a metric
-	mw.recordMetrics(context.Background(), "test-module", "test-service", serviceTypeRequestReply, nil)
+	mw.recordMetrics(context.Background(), "test-module", "test-service", serviceTypeRequestReply, 1, nil)
 
 	// Collect metrics
 	rm, err := tp.Collect()
@@ -74,7 +74,7 @@ func TestMetricsLabels(t *testing.T) {
 	}
 
 	// Record a metric with error
-	mw.recordMetrics(context.Background(), "test-module", "test-service", serviceTypeRequestReply, errors.New("test error"))
+	mw.recordMetrics(context.Background(), "test-module", "test-service", serviceTypeRequestReply, 1, errors.New("test error"))
 
 	// Collect metrics
 	rm, err := tp.Collect()
@@ -142,7 +142,7 @@ func TestMetricsDisabled(t *testing.T) {
 	}
 
 	// Should not panic when recording metrics
-	mw.recordMetrics(context.Background(), "test-module", "test-service", serviceTypeRequestReply, nil)
+	mw.recordMetrics(context.Background(), "test-module", "test-service", serviceTypeRequestReply, 1, nil)
 
 	// Should not panic when recording duration
 	mw.recordRequestReplyDuration(context.Background(), "test-module", "test-service", nil, 0.5)

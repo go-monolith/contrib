@@ -78,6 +78,7 @@ func (m *Middleware) initMetrics() error {
 func (m *Middleware) recordMetrics(
 	ctx context.Context,
 	moduleName, serviceName, serviceType string,
+	count int64,
 	err error,
 ) {
 	if !m.config.MetricsEnabled || m.messageCounter == nil {
@@ -91,7 +92,7 @@ func (m *Middleware) recordMetrics(
 		attribute.Bool(attrError, err != nil),
 	}
 
-	m.messageCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
+	m.messageCounter.Add(ctx, count, metric.WithAttributes(attrs...))
 }
 
 // recordRequestReplyDuration records the duration of a request-reply handler invocation.
@@ -125,7 +126,7 @@ func (m *Middleware) wrapRequestReplyHandlerWithMetrics(
 		resp, err := original(ctx, msg)
 		duration := time.Since(start).Seconds()
 
-		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeRequestReply, err)
+		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeRequestReply, 1, err)
 		m.recordRequestReplyDuration(ctx, moduleName, serviceName, err, duration)
 
 		return resp, err
@@ -139,7 +140,7 @@ func (m *Middleware) wrapQueueGroupHandlerWithMetrics(
 ) types.QueueGroupHandler {
 	return func(ctx context.Context, msg *types.Msg) error {
 		err := original(ctx, msg)
-		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeQueueGroup, err)
+		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeQueueGroup, 1, err)
 		return err
 	}
 }
@@ -151,8 +152,8 @@ func (m *Middleware) wrapStreamConsumerHandlerWithMetrics(
 ) types.StreamConsumerHandler {
 	return func(ctx context.Context, msgs []*types.Msg) error {
 		err := original(ctx, msgs)
-		// Record one metric per batch
-		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeStreamConsumer, err)
+		// Record actual number of messages in the batch
+		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeStreamConsumer, int64(len(msgs)), err)
 		return err
 	}
 }
@@ -164,7 +165,7 @@ func (m *Middleware) wrapEventConsumerHandlerWithMetrics(
 ) types.EventConsumerHandler {
 	return func(ctx context.Context, msg *types.Msg) error {
 		err := original(ctx, msg)
-		m.recordMetrics(ctx, moduleName, eventName, serviceTypeEventConsumer, err)
+		m.recordMetrics(ctx, moduleName, eventName, serviceTypeEventConsumer, 1, err)
 		return err
 	}
 }
@@ -176,8 +177,8 @@ func (m *Middleware) wrapEventStreamConsumerHandlerWithMetrics(
 ) types.EventStreamConsumerHandler {
 	return func(ctx context.Context, msgs []*types.Msg) error {
 		err := original(ctx, msgs)
-		// Record one metric per batch
-		m.recordMetrics(ctx, moduleName, eventName, serviceTypeEventStreamConsumer, err)
+		// Record actual number of messages in the batch
+		m.recordMetrics(ctx, moduleName, eventName, serviceTypeEventStreamConsumer, int64(len(msgs)), err)
 		return err
 	}
 }

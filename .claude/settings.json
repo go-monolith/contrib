@@ -8,7 +8,6 @@
   "permissions": {
     "allow": [
       "mcp__gosu",
-      "mcp__claude-in-chrome",
       "mcp__ide__getDiagnostics",
       "Skill"
     ],
@@ -26,15 +25,21 @@
     "gosu-mcp-core@gosu-code": true,
     "voice-coding@gosu-code": true,
     "gdd@gosu-code": true,
-    "frontend-design@claude-plugins-official": true,
     "pr-review-toolkit@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true
+    "code-simplifier@claude-plugins-official": true,
+    "mono-dev@mono-recipes": true
   },
   "extraKnownMarketplaces": {
     "gosu-code": {
       "source": {
         "source": "github",
         "repo": "gosu-code/claude-plugin"
+      }
+    },
+    "mono-recipes": {
+      "source": {
+        "source": "github",
+        "repo": "go-monolith/mono-recipes"
       }
     }
   },

@@ -1,58 +1,117 @@
-# [Project Name]
+# Mono Contrib
 
-Project description goes here.
+> Repository for third-party middleware and plugin implementations for the [Mono Framework](https://github.com/go-monolith/mono).
 
-## Setup Guidelines
+<div align="center">
 
-This template supports two different project setups. Choose the one that fits your needs:
+[![Go Reference](https://pkg.go.dev/badge/github.com/go-monolith/contrib.svg)](https://pkg.go.dev/github.com/go-monolith/contrib)
+[![Go Report Card](https://goreportcard.com/badge/github.com/go-monolith/contrib)](https://goreportcard.com/report/github.com/go-monolith/contrib)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-### Single Project Setup
+</div>
 
-For standalone applications or single-purpose projects:
+## Overview
 
-- Use **[src/](src/)** for your main application code
-- The **[packages/](packages/)** and **[projects/](projects/)** directories are **not needed** and can be removed
-- All documentation directories ([docs/](docs/)) remain relevant
-- Keep [scripts/](scripts/) and [test/](test/) for development workflows
+This repository contains community-contributed middleware modules, plugins, and integrations for the Mono Framework. Each package is designed to extend the functionality of Mono applications with minimal configuration.
 
-### Monorepo Setup
+> **Go version support:** We support the latest two versions of Go. Visit [https://go.dev/doc/devel/release](https://go.dev/doc/devel/release) for more information.
 
-For managing multiple related projects or shared packages:
+## Middleware Implementations
 
-- Use **[packages/](packages/)** for shared libraries and reusable modules
-- Use **[projects/](projects/)** for individual applications or sub-projects
-- Each package/project can have its own [src/](src/), tests, and configuration
-- The root **[src/](src/)** directory may not be needed in this setup
-- All documentation and development directories remain relevant
+| Middleware | Description | Documentation |
+|------------|-------------|---------------|
+| [otel](./v1/otel/) | OpenTelemetry instrumentation (metrics, traces, logs) | [README](./v1/otel/README.md) |
+
+## Installation
+
+Each middleware can be installed independently:
+
+```bash
+# OTEL Middleware
+go get github.com/go-monolith/contrib/v1/otel
+```
+
+## Usage Example
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/go-monolith/mono"
+    "github.com/go-monolith/contrib/v1/otel"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+)
+
+func main() {
+    // Create OTEL provider
+    meterProvider := sdkmetric.NewMeterProvider(/* ... */)
+
+    // Create middleware
+    otelMw, err := otel.New(
+        otel.WithMeterProvider(meterProvider),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Create Mono application
+    app, err := mono.NewMonoApplication()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Register middleware BEFORE other modules
+    app.Register(otelMw)
+    app.Register(&MyModule{})
+
+    // Start
+    app.Start(context.Background())
+}
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to submit pull requests, report issues, and contribute to the project.
+
+### Adding a New Middleware
+
+1. Create a new directory under `v1/` (e.g., `v1/my-middleware/`)
+2. Implement the `mono.MiddlewareModule` interface
+3. Add comprehensive tests
+4. Create a README.md with documentation
+5. Update this README.md to list your middleware
+6. Submit a pull request
 
 ## Directory Structure
 
-This project follows a structured organization to maintain clarity and separation of concerns:
+```
+contrib/
+├── v1/                     # Version 1 middleware implementations
+│   └── otel/               # OpenTelemetry middleware
+│       ├── README.md
+│       ├── go.mod
+│       ├── otel.go
+│       ├── config.go
+│       ├── options.go
+│       ├── metrics.go
+│       ├── traces.go
+│       ├── logs.go
+│       ├── propagation.go
+│       └── *_test.go
+├── docs/                   # Documentation
+├── scripts/                # Build and utility scripts
+├── go.work                 # Go workspace file
+└── README.md               # This file
+```
 
-### Source Code
+## License
 
-- **[src/](src/)** - Main source code directory containing the application implementation and unit tests (unit tests are recommended to be co-located with the source code)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Packages & Dependencies
+## Related Projects
 
-- **[packages/](packages/)** - Internal packages and reusable modules
-- **[submodule/github.com/](submodule/github.com/)** - External GitHub submodules and third-party dependencies (can be removed if not needed)
-
-### Documentation
-
-- **[docs/goal/](docs/goal/)** - Project goals, objectives, and success metrics
-- **[docs/prd/](docs/prd/)** - Product Requirements Documents (PRDs) defining features and functionality
-- **[docs/spec/](docs/spec/)** - Technical specifications and detailed design documents
-- **[docs/plans/](docs/plans/)** - Implementation plans and project roadmaps
-- **[docs/analyst/](docs/analyst/)** - Business analysis, requirements analysis, and data insights
-- **[docs/architect/](docs/architect/)** - Architecture designs, system diagrams, and technical decisions
-- **[docs/designer/](docs/designer/)** - UI/UX designs, mockups, and design specifications for frontend projects (can be removed if not needed)
-
-### Development
-
-- **[scripts/](scripts/)** - Utility scripts for build, deployment, and automation tasks
-- **[test/](test/)** - Test files including integration tests, E2E tests, and test utilities. Unit tests are not included
-
-### Projects
-
-- **[projects/](projects/)** - Sub-projects, standalone modules, or related project components
+- [Mono Framework](https://github.com/go-monolith/mono) - The core modular monolith framework
+- [Mono Recipes](https://github.com/go-monolith/mono-recipes) - Example projects and recipes

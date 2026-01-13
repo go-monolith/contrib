@@ -214,6 +214,24 @@ func TestAllHandlerTypesMetrics(t *testing.T) {
 				_ = reg.StreamHandler(context.Background(), []*types.Msg{{}})
 			},
 		},
+		{
+			name:        "StreamConsumer_MultipleMsgs",
+			serviceType: serviceTypeStreamConsumer,
+			setupReg: func(handler func()) types.ServiceRegistration {
+				return types.ServiceRegistration{
+					Name:       "test-service",
+					ModuleName: "test-module",
+					Type:       types.ServiceTypeStreamConsumer,
+					StreamHandler: func(ctx context.Context, msgs []*types.Msg) error {
+						handler()
+						return nil
+					},
+				}
+			},
+			callHandler: func(reg types.ServiceRegistration) {
+				_ = reg.StreamHandler(context.Background(), []*types.Msg{{}, {}, {}, {}, {}})
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -394,6 +412,64 @@ func TestRequestReplyDurationWithError(t *testing.T) {
 				checkAttribute(t, attrs, attrError, "true")
 			}
 		}
+	}
+}
+
+func TestBatchMessageCounting(t *testing.T) {
+	tp := testutil.NewTestMeterProvider()
+	defer func() { _ = tp.Shutdown() }()
+
+	mw, err := New(WithMeterProvider(tp.Provider))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = mw.Start(context.Background())
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Test StreamConsumer with 5 messages
+	reg := types.ServiceRegistration{
+		Name:       "test-service",
+		ModuleName: "test-module",
+		Type:       types.ServiceTypeStreamConsumer,
+		StreamHandler: func(ctx context.Context, msgs []*types.Msg) error {
+			return nil
+		},
+	}
+
+	result := mw.OnServiceRegistration(context.Background(), reg)
+	_ = result.StreamHandler(context.Background(), []*types.Msg{{}, {}, {}, {}, {}})
+
+	// Collect metrics
+	rm, err := tp.Collect()
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+
+	// Find the message count metric and verify it's 5
+	found := false
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == metricMessageCount {
+				found = true
+				sum, ok := m.Data.(metricdata.Sum[int64])
+				if !ok {
+					t.Fatalf("metric data type = %T, want Sum[int64]", m.Data)
+				}
+				if len(sum.DataPoints) == 0 {
+					t.Fatal("no data points in metric")
+				}
+				if sum.DataPoints[0].Value != 5 {
+					t.Errorf("metric value = %d, want 5 (number of messages in batch)", sum.DataPoints[0].Value)
+				}
+			}
+		}
+	}
+
+	if !found {
+		t.Error("metric not found")
 	}
 }
 

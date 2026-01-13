@@ -75,6 +75,8 @@ func (m *Middleware) initMetrics() error {
 }
 
 // recordMetrics records metrics for a handler invocation.
+// The count parameter represents the number of messages processed in this invocation,
+// which is typically 1 for single-message handlers and len(msgs) for batch handlers.
 func (m *Middleware) recordMetrics(
 	ctx context.Context,
 	moduleName, serviceName, serviceType string,
@@ -153,6 +155,8 @@ func (m *Middleware) wrapStreamConsumerHandlerWithMetrics(
 	return func(ctx context.Context, msgs []*types.Msg) error {
 		err := original(ctx, msgs)
 		// Record actual number of messages in the batch
+		// Note: len(msgs) returns 0 for both nil and empty slices, which correctly
+		// represents that no messages were processed
 		m.recordMetrics(ctx, moduleName, serviceName, serviceTypeStreamConsumer, int64(len(msgs)), err)
 		return err
 	}
@@ -178,6 +182,8 @@ func (m *Middleware) wrapEventStreamConsumerHandlerWithMetrics(
 	return func(ctx context.Context, msgs []*types.Msg) error {
 		err := original(ctx, msgs)
 		// Record actual number of messages in the batch
+		// Note: len(msgs) returns 0 for both nil and empty slices, which correctly
+		// represents that no messages were processed
 		m.recordMetrics(ctx, moduleName, eventName, serviceTypeEventStreamConsumer, int64(len(msgs)), err)
 		return err
 	}

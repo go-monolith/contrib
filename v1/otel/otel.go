@@ -205,6 +205,7 @@ func (m *Middleware) OnEventConsumerRegistration(
 	eventName := entry.EventDef.Name
 
 	handler := entry.Handler
+	// Apply metrics first (inner), then tracing (outer) to preserve span context in metrics
 	if m.config.MetricsEnabled {
 		handler = m.wrapEventConsumerHandlerWithMetrics(handler, moduleName, eventName)
 	}
@@ -232,6 +233,7 @@ func (m *Middleware) OnEventStreamConsumerRegistration(
 	eventName := entry.EventDef.Name
 
 	handler := entry.Handler
+	// Apply metrics first (inner), then tracing (outer) to preserve span context in metrics
 	if m.config.MetricsEnabled {
 		handler = m.wrapEventStreamConsumerHandlerWithMetrics(handler, moduleName, eventName)
 	}

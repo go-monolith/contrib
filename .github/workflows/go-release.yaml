@@ -1,0 +1,108 @@
+name: Release Drafter (v1 packages)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pull-requests: read
+    outputs:
+      packages: ${{ github.event_name == 'workflow_dispatch' && steps.filter-setup.outputs.packages || steps.map-packages.outputs.packages || '[]' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate filters
+        id: filter-setup
+        shell: bash
+        run: |
+          shopt -s nullglob
+
+          # Find all directories containing go.mod in v1/
+          packages=()
+          while IFS= read -r -d '' mod_file; do
+            pkg_dir=$(dirname "$mod_file")
+            packages+=("$pkg_dir")
+          done < <(find v1 -name 'go.mod' -type f -print0)
+
+          if (( ${#packages[@]} == 0 )); then
+            echo "filters={}" >> "$GITHUB_OUTPUT"
+            echo "packages=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "filters<<EOF"
+            for pkg in "${packages[@]}"; do
+              name=${pkg#v1/}
+              printf "'%s': '%s/**'\n" "$name" "$pkg"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          printf -v joined '"%s",' "${packages[@]}"
+          joined=${joined%,}
+          echo "packages=[${joined}]" >> "$GITHUB_OUTPUT"
+
+      - name: Filter changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: ${{ steps.filter-setup.outputs.filters }}
+
+      - name: Map package paths
+        id: map-packages
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          FILTER_PACKAGES: ${{ steps.filter.outputs.changes || '[]' }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          packages = json.loads(os.environ["FILTER_PACKAGES"])
+          paths = [f"v1/{name}" for name in packages]
+          print(f"packages={json.dumps(paths)}")
+          PY
+
+  release-drafter:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: needs.changes.outputs.packages != '[]'
+    permissions:
+      contents: write
+      pull-requests: read
+    strategy:
+      matrix:
+        package: ${{ fromJSON(needs.changes.outputs.packages || '[]') }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate dynamic config from template
+        id: generate-config
+        run: |
+          package="${{ matrix.package }}"
+          directory="$package"
+          {
+            echo "config<<EOF"
+            sed -e "s|{{PACKAGE}}|$package|g" -e "s|{{DIRECTORY}}|$directory|g" .github/release-drafter-template.yml
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Using ReneWerner87/release-drafter fork because it supports inline config parameter
+      # which enables dynamic per-module configuration via template substitution
+      - name: Run release-drafter
+        uses: ReneWerner87/release-drafter@6dec4ceb1fb86b6514f11a2e7a39e1dedce709d0
+        with:
+          config: ${{ steps.generate-config.outputs.config }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

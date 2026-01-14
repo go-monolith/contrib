@@ -1,0 +1,61 @@
+name: go-test-otel
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'v1/otel/**/*.go'
+      - 'v1/otel/go.mod'
+      - 'v1/otel/go.sum'
+      - 'Makefile'
+      - '.golangci.yml'
+      - '.github/workflows/go-test-otel.yaml'
+
+concurrency:
+  group: go-test-otel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['stable', 'oldstable']
+
+    name: otel - Go ${{ matrix.go-version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: false
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-otel-${{ hashFiles('v1/otel/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-otel-
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+      - name: Install dependencies
+        run: cd v1/otel && go mod download
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.7.2
+          args: --timeout=5m
+          working-directory: v1/otel
+
+      - name: Run Go build
+        run: cd v1/otel && go build ./...
+
+      - name: Run Go tests with race detector
+        run: cd v1/otel && go test -race -v ./...

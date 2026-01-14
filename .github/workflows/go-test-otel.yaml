@@ -48,7 +48,7 @@ jobs:
         run: cd v1/otel && go mod download
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.7.2
           args: --timeout=5m

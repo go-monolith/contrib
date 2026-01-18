@@ -5,6 +5,7 @@ go 1.25.5
 replace github.com/go-monolith/contrib/v1/jwt => ../../../v1/jwt
 
 require (
+	github.com/gelmium/graceful-shutdown v0.0.11
 	github.com/go-monolith/contrib/v1/jwt v0.0.0-00010101000000-000000000000
 	github.com/go-monolith/mono v0.0.4
 	github.com/gofiber/fiber/v2 v2.52.10

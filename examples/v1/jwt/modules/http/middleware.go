@@ -10,7 +10,12 @@ func isUnauthorizedError(err error) bool {
 		strings.Contains(msg, "'sub' claim is") ||
 		strings.Contains(msg, "invalid token") ||
 		strings.Contains(msg, "missing authorization header") ||
-		strings.Contains(msg, "authorization header")
+		strings.Contains(msg, "authorization header") ||
+		strings.Contains(msg, "invalid issuer") ||
+		strings.Contains(msg, "invalid audience") ||
+		strings.Contains(msg, "invalid signature") ||
+		strings.Contains(msg, "token expired") ||
+		strings.Contains(msg, "token not yet valid")
 }
 
 // isForbiddenError checks if an error indicates authorization failure.

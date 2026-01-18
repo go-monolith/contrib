@@ -1,6 +1,7 @@
 go 1.25.5
 
 use (
+	./examples/v1/jwt
 	./examples/v1/otel
 	./v1/jwt
 	./v1/otel

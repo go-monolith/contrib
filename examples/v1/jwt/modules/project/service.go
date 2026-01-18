@@ -13,6 +13,8 @@ import (
 )
 
 // getUserIDFromContext extracts the user ID from JWT claims in the context.
+// For multi-tenant scenarios, it creates a composite ID in the format "issuer:sub"
+// to ensure tenant isolation. If no issuer is present, it uses just the sub claim.
 // Returns an error if claims are missing or the 'sub' claim is not present.
 func getUserIDFromContext(ctx context.Context) (string, error) {
 	claims, ok := jwt.ClaimsFromContext(ctx)
@@ -34,6 +36,15 @@ func getUserIDFromContext(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("'sub' claim is empty")
 	}
 
+	// For multi-tenant isolation, include issuer in the user identity
+	if iss, ok := claims["iss"]; ok {
+		if issuer, ok := iss.(string); ok && issuer != "" {
+			// Create composite ID: issuer:sub
+			return fmt.Sprintf("%s:%s", issuer, userID), nil
+		}
+	}
+
+	// Fallback to just sub if no issuer
 	return userID, nil
 }
 

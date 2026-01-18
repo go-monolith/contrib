@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-monolith/mono"
 	"github.com/go-monolith/contrib/v1/jwt"
+	"github.com/go-monolith/mono"
+	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
 	httpmod "github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/http"
 	"github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/project"
-	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
 	jwtgo "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -203,7 +203,7 @@ func TestJWKSIntegration(t *testing.T) {
 // startTestApp starts a test application with JWKS configuration.
 func startTestApp(t *testing.T, mockServer *MockJWKSServer) (mono.MonoApplication, func()) {
 	app, err := mono.NewMonoApplication(
-		mono.WithShutdownTimeout(5*time.Second),
+		mono.WithShutdownTimeout(5 * time.Second),
 	)
 	require.NoError(t, err)
 

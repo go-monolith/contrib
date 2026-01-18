@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-monolith/mono"
 	"github.com/go-monolith/contrib/v1/jwt"
+	"github.com/go-monolith/mono"
 	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
 	"github.com/google/uuid"
 )

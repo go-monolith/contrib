@@ -34,10 +34,10 @@ func main() {
 	// Create JWT claims
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"iss":   issuer,                       // Issuer
-		"sub":   userID,                       // Subject (user ID)
-		"email": email,                        // Email (custom claim)
-		"iat":   now.Unix(),                   // Issued at
+		"iss":   issuer,                        // Issuer
+		"sub":   userID,                        // Subject (user ID)
+		"email": email,                         // Email (custom claim)
+		"iat":   now.Unix(),                    // Issued at
 		"exp":   now.Add(1 * time.Hour).Unix(), // Expires in 1 hour
 	}
 

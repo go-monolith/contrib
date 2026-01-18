@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-monolith/mono"
 	"github.com/go-monolith/contrib/v1/jwt"
-	jwtgo "github.com/golang-jwt/jwt/v5"
+	"github.com/go-monolith/mono"
 	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
+	jwtgo "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +38,7 @@ func TestCreateProject_Success(t *testing.T) {
 	assert.NotEmpty(t, resp.ID)
 	assert.Equal(t, "Test Project", resp.Name)
 	assert.Equal(t, "A test project", resp.Description)
-	assert.Equal(t, "user-123", resp.OwnerID)
+	assert.Equal(t, "test-issuer:user-123", resp.OwnerID) // Composite ID: issuer:sub
 	assert.NotEmpty(t, resp.CreatedAt)
 	assert.NotEmpty(t, resp.UpdatedAt)
 }

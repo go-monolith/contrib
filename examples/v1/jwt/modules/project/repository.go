@@ -12,7 +12,7 @@ import (
 type Repository struct {
 	mu       sync.RWMutex
 	projects map[string]*domain.Project // ID → Project
-	byOwner  map[string][]string         // OwnerID → []ProjectID
+	byOwner  map[string][]string        // OwnerID → []ProjectID
 }
 
 // NewRepository creates a new empty repository.

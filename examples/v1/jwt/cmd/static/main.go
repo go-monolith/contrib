@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-monolith/mono"
+	gfshutdown "github.com/gelmium/graceful-shutdown"
 	"github.com/go-monolith/contrib/v1/jwt"
+	"github.com/go-monolith/mono"
 	"github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/http"
 	"github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/project"
-	gfshutdown "github.com/gelmium/graceful-shutdown"
 )
 
 const (

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/go-monolith/mono"
+	"github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/project"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/go-monolith/mono"
-	"github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/project"
 )
 
 // Module implements the HTTP module as a DependentModule.

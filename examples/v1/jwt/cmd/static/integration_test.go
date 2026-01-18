@@ -12,23 +12,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-monolith/mono"
 	"github.com/go-monolith/contrib/v1/jwt"
+	"github.com/go-monolith/mono"
+	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
 	httpmod "github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/http"
 	"github.com/go-monolith/mono/contrib/examples/v1/jwt/modules/project"
-	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
 	jwtgo "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const (
-	testPort      = 3100
-	testSecret    = "test-secret-for-integration"
-	testIssuer    = "test-issuer"
-	baseURL       = "http://localhost:3100"
-	healthURL     = baseURL + "/health"
-	projectsURL   = baseURL + "/api/v1/projects"
+	testPort    = 3100
+	testSecret  = "test-secret-for-integration"
+	testIssuer  = "test-issuer"
+	baseURL     = "http://localhost:3100"
+	healthURL   = baseURL + "/health"
+	projectsURL = baseURL + "/api/v1/projects"
 )
 
 // TestStaticSecretIntegration tests the complete flow with JWT middleware
@@ -67,7 +67,7 @@ func TestStaticSecretIntegration(t *testing.T) {
 		project := createProject(t, token, reqBody)
 		assert.NotEmpty(t, project.ID)
 		assert.Equal(t, "Integration Test Project", project.Name)
-		assert.Equal(t, "user-123", project.OwnerID)
+		assert.Equal(t, "test-issuer:user-123", project.OwnerID) // Composite ID: issuer:sub
 
 		projectID = project.ID
 	})
@@ -159,7 +159,7 @@ func TestStaticSecretIntegration(t *testing.T) {
 // startTestApp starts a test application instance
 func startTestApp(t *testing.T) (mono.MonoApplication, func()) {
 	app, err := mono.NewMonoApplication(
-		mono.WithShutdownTimeout(5*time.Second),
+		mono.WithShutdownTimeout(5 * time.Second),
 	)
 	require.NoError(t, err)
 

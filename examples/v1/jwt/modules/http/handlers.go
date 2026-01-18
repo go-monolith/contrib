@@ -3,8 +3,8 @@ package http
 import (
 	"context"
 
-	"github.com/gofiber/fiber/v2"
 	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
+	"github.com/gofiber/fiber/v2"
 )
 
 const authHeaderKey = "jwt-authorization-header"

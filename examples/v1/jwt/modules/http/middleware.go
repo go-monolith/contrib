@@ -8,7 +8,9 @@ func isUnauthorizedError(err error) bool {
 	return strings.Contains(msg, "no JWT claims") ||
 		strings.Contains(msg, "missing 'sub' claim") ||
 		strings.Contains(msg, "'sub' claim is") ||
-		strings.Contains(msg, "invalid token")
+		strings.Contains(msg, "invalid token") ||
+		strings.Contains(msg, "missing authorization header") ||
+		strings.Contains(msg, "authorization header")
 }
 
 // isForbiddenError checks if an error indicates authorization failure.

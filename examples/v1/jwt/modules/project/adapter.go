@@ -9,6 +9,8 @@ import (
 	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
 )
 
+const authHeaderKey = "jwt-authorization-header"
+
 // ProjectPort defines the interface for project operations.
 // This port allows the HTTP module to interact with the project service
 // without knowing the internal implementation details (hexagonal architecture).
@@ -33,6 +35,21 @@ func NewAdapter(container mono.ServiceContainer) *Adapter {
 	}
 }
 
+// createMsgWithAuth creates a mono.Msg with the Authorization header from context
+func createMsgWithAuth(ctx context.Context, data []byte) *mono.Msg {
+	msg := &mono.Msg{
+		Data:   data,
+		Header: make(map[string][]string),
+	}
+
+	// Add Authorization header if present in context
+	if authHeader, ok := ctx.Value(authHeaderKey).(string); ok && authHeader != "" {
+		msg.Header["Authorization"] = []string{authHeader}
+	}
+
+	return msg
+}
+
 // Create creates a new project via the project service.
 func (a *Adapter) Create(ctx context.Context, req domain.CreateProjectRequest) (domain.ProjectResponse, error) {
 	client, err := a.container.GetRequestReplyService("create")
@@ -45,7 +62,8 @@ func (a *Adapter) Create(ctx context.Context, req domain.CreateProjectRequest) (
 		return domain.ProjectResponse{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := client.Call(ctx, data)
+	msg := createMsgWithAuth(ctx, data)
+	resp, err := client.CallMsg(ctx, msg)
 	if err != nil {
 		return domain.ProjectResponse{}, err
 	}
@@ -70,7 +88,8 @@ func (a *Adapter) Get(ctx context.Context, req domain.GetProjectRequest) (domain
 		return domain.ProjectResponse{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := client.Call(ctx, data)
+	msg := createMsgWithAuth(ctx, data)
+	resp, err := client.CallMsg(ctx, msg)
 	if err != nil {
 		return domain.ProjectResponse{}, err
 	}
@@ -95,7 +114,8 @@ func (a *Adapter) List(ctx context.Context, req domain.ListProjectsRequest) (dom
 		return domain.ListProjectsResponse{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := client.Call(ctx, data)
+	msg := createMsgWithAuth(ctx, data)
+	resp, err := client.CallMsg(ctx, msg)
 	if err != nil {
 		return domain.ListProjectsResponse{}, err
 	}
@@ -120,7 +140,8 @@ func (a *Adapter) Update(ctx context.Context, req domain.UpdateProjectRequest) (
 		return domain.ProjectResponse{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := client.Call(ctx, data)
+	msg := createMsgWithAuth(ctx, data)
+	resp, err := client.CallMsg(ctx, msg)
 	if err != nil {
 		return domain.ProjectResponse{}, err
 	}
@@ -145,7 +166,8 @@ func (a *Adapter) Delete(ctx context.Context, req domain.DeleteProjectRequest) (
 		return domain.ProjectResponse{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := client.Call(ctx, data)
+	msg := createMsgWithAuth(ctx, data)
+	resp, err := client.CallMsg(ctx, msg)
 	if err != nil {
 		return domain.ProjectResponse{}, err
 	}

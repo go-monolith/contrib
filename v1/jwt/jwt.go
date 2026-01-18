@@ -123,7 +123,7 @@ func New(opts ...Option) (*Middleware, error) {
 		config:    config,
 		validator: validator,
 		jwksCache: jwksCache, // nil if using static keys
-		logger:    nil,       // Will be set by Mono framework
+		logger:    slog.Default(),
 		// refreshCtx and refreshCancel will be created in Start()
 	}
 

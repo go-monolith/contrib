@@ -1,9 +1,22 @@
 package http
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
 	domain "github.com/go-monolith/mono/contrib/examples/v1/jwt/domain/project"
 )
+
+const authHeaderKey = "jwt-authorization-header"
+
+// contextWithAuth adds the Authorization header from Fiber context to the standard context
+func contextWithAuth(c *fiber.Ctx) context.Context {
+	ctx := c.UserContext()
+	if authHeader := c.Get("Authorization"); authHeader != "" {
+		ctx = context.WithValue(ctx, authHeaderKey, authHeader)
+	}
+	return ctx
+}
 
 // ErrorResponse represents an error response.
 type ErrorResponse struct {
@@ -29,7 +42,7 @@ func (m *Module) createProjectHandler(c *fiber.Ctx) error {
 		})
 	}
 
-	resp, err := m.project.Create(c.Context(), req)
+	resp, err := m.project.Create(contextWithAuth(c), req)
 	if err != nil {
 		return handleServiceError(c, err)
 	}
@@ -51,7 +64,7 @@ func (m *Module) getProjectHandler(c *fiber.Ctx) error {
 		ID: id,
 	}
 
-	resp, err := m.project.Get(c.Context(), req)
+	resp, err := m.project.Get(contextWithAuth(c), req)
 	if err != nil {
 		return handleServiceError(c, err)
 	}
@@ -63,7 +76,7 @@ func (m *Module) getProjectHandler(c *fiber.Ctx) error {
 func (m *Module) listProjectsHandler(c *fiber.Ctx) error {
 	req := domain.ListProjectsRequest{}
 
-	resp, err := m.project.List(c.Context(), req)
+	resp, err := m.project.List(contextWithAuth(c), req)
 	if err != nil {
 		return handleServiceError(c, err)
 	}
@@ -92,7 +105,7 @@ func (m *Module) updateProjectHandler(c *fiber.Ctx) error {
 	// Set ID from URL
 	req.ID = id
 
-	resp, err := m.project.Update(c.Context(), req)
+	resp, err := m.project.Update(contextWithAuth(c), req)
 	if err != nil {
 		return handleServiceError(c, err)
 	}
@@ -114,7 +127,7 @@ func (m *Module) deleteProjectHandler(c *fiber.Ctx) error {
 		ID: id,
 	}
 
-	resp, err := m.project.Delete(c.Context(), req)
+	resp, err := m.project.Delete(contextWithAuth(c), req)
 	if err != nil {
 		return handleServiceError(c, err)
 	}

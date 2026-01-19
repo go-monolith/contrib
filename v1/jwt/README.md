@@ -9,7 +9,7 @@ A comprehensive JWT authentication middleware for the [Mono framework](https://g
 - **Issuer & Audience Validation**: Optional validation of `iss` and `aud` claims
 - **JWKS Endpoint Support**: Dynamic key fetching from JWKS endpoints with intelligent caching and automatic key rotation handling
 - **Context Enhancement**: Validated claims automatically injected into `context.Context` for downstream handlers
-- **All Handler Types**: Wraps all 5 Mono handler types (RequestReply, QueueGroup, StreamConsumer, EventConsumer, EventStreamConsumer)
+- **All Handler Types**: Wraps RequestReply, QueueGroup, and EventConsumer handlers automatically. Batch handlers (StreamConsumer, EventStreamConsumer) require manual validation using the exposed `Validator()` method for security
 - **Skip Paths**: Flexible configuration to exclude specific services from JWT validation
 - **Optional Mode**: Allow requests without tokens for public endpoints
 - **High Performance**: 89.8% test coverage, thread-safe, optimized for high throughput
@@ -260,24 +260,45 @@ func (m *MyModule) HandleProcessTask(ctx context.Context, msg *types.Msg) error 
 }
 ```
 
-### Example 3: StreamConsumer Handler
+### Example 3: StreamConsumer Handler (Manual Validation Required)
+
+**Note:** Batch handlers (StreamConsumer, EventStreamConsumer) are NOT automatically wrapped by the middleware because validating only the first message would be insecure - each message may have a different authentication context. You must validate each message individually using the exposed `Validator()` method.
 
 ```go
+type MyModule struct {
+    jwtValidator *jwt.TokenValidator
+}
+
+// Pass the JWT middleware to your module constructor
+func NewMyModule(jwtMw *jwt.Middleware) *MyModule {
+    return &MyModule{
+        jwtValidator: jwtMw.Validator(),
+    }
+}
+
 func (m *MyModule) RegisterServices(reg types.ServiceRegistry) error {
     return reg.StreamConsumer("ProcessBatch", "my-stream", m.HandleProcessBatch)
 }
 
 func (m *MyModule) HandleProcessBatch(ctx context.Context, msgs []*types.Msg) error {
-    // JWT validation uses the first message's token for the entire batch
-    claims, ok := jwt.ClaimsFromContext(ctx)
-    if !ok {
-        return errors.New("authentication required")
-    }
-
-    userID := claims["sub"].(string)
-
-    // Process all messages in batch
+    // Validate each message individually
     for _, msg := range msgs {
+        // Extract token from message
+        token, err := m.jwtValidator.Extract(msg)
+        if err != nil {
+            log.Printf("Skipping message without valid token: %v", err)
+            continue // or return err to fail the entire batch
+        }
+
+        // Validate token
+        claims, err := m.jwtValidator.Validate(ctx, token)
+        if err != nil {
+            log.Printf("Skipping message with invalid token: %v", err)
+            continue // or return err to fail the entire batch
+        }
+
+        // Process message with authenticated claims
+        userID := claims["sub"].(string)
         log.Printf("Processing message for user: %s", userID)
         // ... process message
     }
@@ -308,9 +329,22 @@ func (m *MyModule) HandleUserCreated(ctx context.Context, msg *types.Msg) error 
 }
 ```
 
-### Example 5: EventStreamConsumer Handler
+### Example 5: EventStreamConsumer Handler (Manual Validation Required)
+
+**Note:** Like StreamConsumer, EventStreamConsumer handlers require manual validation of each message to ensure security. Use the exposed `Validator()` method.
 
 ```go
+type MyModule struct {
+    jwtValidator *jwt.TokenValidator
+}
+
+// Pass the JWT middleware to your module constructor
+func NewMyModule(jwtMw *jwt.Middleware) *MyModule {
+    return &MyModule{
+        jwtValidator: jwtMw.Validator(),
+    }
+}
+
 func (m *MyModule) RegisterEventConsumers(bus types.EventBus) error {
     return bus.StreamSubscribe(types.EventDef{
         Name: "OrderPlaced",
@@ -318,14 +352,24 @@ func (m *MyModule) RegisterEventConsumers(bus types.EventBus) error {
 }
 
 func (m *MyModule) HandleOrderBatch(ctx context.Context, msgs []*types.Msg) error {
-    // JWT validation uses the first message's token for the entire batch
-    userID, ok := jwt.SubjectFromContext(ctx)
-    if !ok {
-        return errors.New("authentication required")
-    }
-
-    // Process batch of order events
+    // Validate each message individually
     for _, msg := range msgs {
+        // Extract token from message
+        token, err := m.jwtValidator.Extract(msg)
+        if err != nil {
+            log.Printf("Skipping event without valid token: %v", err)
+            continue // or return err to fail the entire batch
+        }
+
+        // Validate token
+        claims, err := m.jwtValidator.Validate(ctx, token)
+        if err != nil {
+            log.Printf("Skipping event with invalid token: %v", err)
+            continue // or return err to fail the entire batch
+        }
+
+        // Process event with authenticated claims
+        userID := claims["sub"].(string)
         log.Printf("Processing order for user: %s", userID)
         // ... process order
     }

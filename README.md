@@ -20,6 +20,7 @@ This repository contains community-contributed middleware modules, plugins, and 
 
 | Middleware | Description | Documentation |
 |------------|-------------|---------------|
+| [jwt](./v1/jwt/) | JWT authentication with multi-strategy support (HMAC, RSA, ECDSA, JWKS) | [README](./v1/jwt/README.md) |
 | [otel](./v1/otel/) | OpenTelemetry instrumentation (metrics, traces, logs) | [README](./v1/otel/README.md) |
 
 ## Installation
@@ -27,6 +28,9 @@ This repository contains community-contributed middleware modules, plugins, and 
 Each middleware can be installed independently:
 
 ```bash
+# JWT Middleware
+go get github.com/go-monolith/contrib/v1/jwt
+
 # OTEL Middleware
 go get github.com/go-monolith/contrib/v1/otel
 ```
@@ -90,6 +94,16 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ```
 contrib/
 ├── v1/                     # Version 1 middleware implementations
+│   ├── jwt/                # JWT authentication middleware
+│   │   ├── README.md
+│   │   ├── go.mod
+│   │   ├── jwt.go
+│   │   ├── config.go
+│   │   ├── options.go
+│   │   ├── validator.go
+│   │   ├── jwks.go
+│   │   ├── provider.go
+│   │   └── *_test.go
 │   └── otel/               # OpenTelemetry middleware
 │       ├── README.md
 │       ├── go.mod
@@ -101,6 +115,7 @@ contrib/
 │       ├── logs.go
 │       ├── propagation.go
 │       └── *_test.go
+├── examples/               # Example applications
 ├── docs/                   # Documentation
 ├── scripts/                # Build and utility scripts
 ├── go.work                 # Go workspace file

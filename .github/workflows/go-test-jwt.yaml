@@ -1,0 +1,61 @@
+name: go-test-jwt
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'v1/jwt/**/*.go'
+      - 'v1/jwt/go.mod'
+      - 'v1/jwt/go.sum'
+      - 'Makefile'
+      - '.golangci.yml'
+      - '.github/workflows/go-test-jwt.yaml'
+
+concurrency:
+  group: go-test-jwt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['stable', 'oldstable']
+
+    name: jwt - Go ${{ matrix.go-version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: false
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-jwt-${{ hashFiles('v1/jwt/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-jwt-
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+      - name: Install dependencies
+        run: cd v1/jwt && go mod download
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.7.2
+          args: --timeout=5m
+          working-directory: v1/jwt
+
+      - name: Run Go build
+        run: cd v1/jwt && go build ./...
+
+      - name: Run Go tests with race detector
+        run: cd v1/jwt && go test -race -v ./...

@@ -8,6 +8,15 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// DefaultAllowedAlgorithms is the default list of allowed signing algorithms
+// when AllowedAlgorithms is not configured. This prevents algorithm confusion
+// attacks by explicitly excluding dangerous algorithms like "none".
+var DefaultAllowedAlgorithms = []string{
+	"HS256", "HS384", "HS512",
+	"RS256", "RS384", "RS512",
+	"ES256", "ES384", "ES512",
+}
+
 // TokenValidator validates JWT tokens using a configured key provider.
 type TokenValidator struct {
 	keyProvider KeyProvider
@@ -356,16 +365,18 @@ func (v *TokenValidator) validateRequiredClaims(claims jwt.MapClaims) error {
 
 // isAlgorithmAllowed checks if the given algorithm is in the allowed list.
 //
-// If AllowedAlgorithms is empty, all algorithms are allowed.
+// If AllowedAlgorithms is empty, DefaultAllowedAlgorithms is used to prevent
+// algorithm confusion attacks (e.g., "none" algorithm).
 // If AllowedAlgorithms is configured, only those algorithms are allowed.
 func (v *TokenValidator) isAlgorithmAllowed(alg string) bool {
-	// If no whitelist is configured, allow all algorithms
-	if len(v.config.AllowedAlgorithms) == 0 {
-		return true
+	// Use configured algorithms or default to a secure set
+	allowedList := v.config.AllowedAlgorithms
+	if len(allowedList) == 0 {
+		allowedList = DefaultAllowedAlgorithms
 	}
 
-	// Check if algorithm is in the whitelist
-	for _, allowed := range v.config.AllowedAlgorithms {
+	// Check if algorithm is in the allowed list
+	for _, allowed := range allowedList {
 		if alg == allowed {
 			return true
 		}

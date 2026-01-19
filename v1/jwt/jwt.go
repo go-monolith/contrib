@@ -114,8 +114,11 @@ func New(opts ...Option) (*Middleware, error) {
 		keyProvider = NewStaticKeyProvider(config.PublicKey)
 	}
 
-	// Create validator with the key provider
-	validator := NewTokenValidator(keyProvider, config)
+	// Create logger instance
+	logger := slog.Default()
+
+	// Create validator with the key provider and logger
+	validator := NewTokenValidator(keyProvider, config, logger)
 
 	// Create middleware instance
 	middleware := &Middleware{
@@ -123,7 +126,7 @@ func New(opts ...Option) (*Middleware, error) {
 		config:    config,
 		validator: validator,
 		jwksCache: jwksCache, // nil if using static keys
-		logger:    slog.Default(),
+		logger:    logger,
 		// refreshCtx and refreshCancel will be created in Start()
 	}
 
@@ -138,6 +141,24 @@ func (m *Middleware) Name() string {
 // Logger returns the logger instance (set by Mono framework).
 func (m *Middleware) Logger() *slog.Logger {
 	return m.logger
+}
+
+// Validator returns the token validator for direct use by modules.
+//
+// This allows modules to access the validator directly when they need to
+// validate JWT tokens outside of the middleware wrapper (e.g., in background
+// jobs or custom handlers that need fine-grained control over authentication).
+//
+// Example:
+//
+//	validator := jwtMiddleware.Validator()
+//	token, err := validator.Extract(msg)
+//	if err != nil {
+//	    return err
+//	}
+//	claims, err := validator.Validate(ctx, token)
+func (m *Middleware) Validator() *TokenValidator {
+	return m.validator
 }
 
 // Start initializes the middleware and performs startup tasks.
@@ -293,9 +314,22 @@ func (m *Middleware) OnServiceRegistration(ctx context.Context, reg types.Servic
 		}
 
 	case types.ServiceTypeStreamConsumer:
-		if reg.StreamHandler != nil {
-			reg.StreamHandler = m.wrapStreamConsumerHandler(reg.StreamHandler, reg.ModuleName, reg.Name)
-		}
+		// Batch handlers are not automatically wrapped by the middleware.
+		// Developers must validate each message individually within their handler
+		// using the exposed Validator() method, as batch processing should not
+		// assume all messages share the same authentication context.
+		//
+		// Example:
+		//   validator := jwtMiddleware.Validator()
+		//   for _, msg := range msgs {
+		//       token, err := validator.Extract(msg)
+		//       claims, err := validator.Validate(ctx, token)
+		//       // process message with claims
+		//   }
+		m.logger.Debug("StreamConsumer handlers require manual JWT validation",
+			"module", reg.ModuleName,
+			"service", reg.Name,
+		)
 	}
 
 	return reg
@@ -367,32 +401,43 @@ func (m *Middleware) OnEventConsumerRegistration(ctx context.Context, entry type
 	return entry
 }
 
-// OnEventStreamConsumerRegistration wraps event stream consumer handlers with JWT validation logic.
+// OnEventStreamConsumerRegistration does not wrap event stream consumer handlers.
 //
-// This hook intercepts event stream consumer registration and wraps the handler unless
-// the event stream consumer matches a SkipPaths pattern.
+// Batch event handlers are not automatically wrapped by the middleware because
+// validating only the first message in a batch is dangerous - it assumes all
+// messages share the same authentication context, which may not be true.
 //
-// Requirements: FR9 (Mono integration), FR10 (Skip paths)
+// Developers must validate each message individually within their handler using
+// the exposed Validator() method.
+//
+// Example:
+//
+//	validator := jwtMiddleware.Validator()
+//	for _, msg := range msgs {
+//	    token, err := validator.Extract(msg)
+//	    if err != nil {
+//	        // handle missing/invalid token
+//	        continue
+//	    }
+//	    claims, err := validator.Validate(ctx, token)
+//	    if err != nil {
+//	        // handle validation error
+//	        continue
+//	    }
+//	    // process message with authenticated claims
+//	}
+//
+// Requirements: FR9 (Mono integration)
 func (m *Middleware) OnEventStreamConsumerRegistration(ctx context.Context, entry types.EventStreamConsumerEntry) types.EventStreamConsumerEntry {
-	if entry.Handler == nil {
-		return entry
-	}
+	if entry.Handler != nil {
+		moduleName := entry.Module.Name()
+		eventName := entry.EventDef.Name
 
-	// Get module and event names for skip check
-	moduleName := entry.Module.Name()
-	eventName := entry.EventDef.Name
-
-	// Check if this event stream consumer should skip JWT validation
-	if m.shouldSkip(moduleName, eventName) {
-		m.logger.Debug("skipping JWT validation for event stream consumer",
+		m.logger.Debug("EventStreamConsumer handlers require manual JWT validation",
 			"module", moduleName,
 			"event", eventName,
 		)
-		return entry
 	}
-
-	// Wrap the handler
-	entry.Handler = m.wrapEventStreamConsumerHandler(entry.Handler, moduleName, eventName)
 
 	return entry
 }
@@ -413,7 +458,7 @@ func (m *Middleware) OnEventStreamConsumerRegistration(ctx context.Context, entr
 func (m *Middleware) wrapRequestReplyHandler(handler types.RequestReplyHandler, moduleName, serviceName string) types.RequestReplyHandler {
 	return func(ctx context.Context, msg *types.Msg) ([]byte, error) {
 		// Extract token from message headers
-		token, err := extractToken(msg.Header, m.config.HeaderKey, m.config.TokenPrefix)
+		token, err := m.validator.Extract(msg)
 		if err != nil {
 			// Token extraction failed
 			if m.config.Optional {
@@ -476,7 +521,7 @@ func (m *Middleware) wrapRequestReplyHandler(handler types.RequestReplyHandler, 
 func (m *Middleware) wrapQueueGroupHandler(handler types.QueueGroupHandler, moduleName, serviceName string) types.QueueGroupHandler {
 	return func(ctx context.Context, msg *types.Msg) error {
 		// Extract token from message headers
-		token, err := extractToken(msg.Header, m.config.HeaderKey, m.config.TokenPrefix)
+		token, err := m.validator.Extract(msg)
 		if err != nil {
 			// Token extraction failed
 			if m.config.Optional {
@@ -525,80 +570,6 @@ func (m *Middleware) wrapQueueGroupHandler(handler types.QueueGroupHandler, modu
 	}
 }
 
-// wrapStreamConsumerHandler wraps a StreamConsumerHandler with JWT validation logic.
-//
-// The wrapper follows the same flow as wrapRequestReplyHandler, but validates the first message
-// in the batch and uses its token for the entire batch:
-//  1. Extract JWT token from first message headers
-//  2. If extraction fails and Optional=true, call original handler without validation
-//  3. If extraction fails and Optional=false, return error
-//  4. Validate token using the validator
-//  5. If validation succeeds, add claims to context and call original handler
-//  6. If validation fails, log warning and return error
-//
-// Note: StreamConsumerHandler processes batches of messages. We validate using the first
-// message's token, assuming all messages in the batch should have the same authentication.
-//
-// Requirements: FR1, FR2, FR3, FR4, FR5, FR6, FR9
-func (m *Middleware) wrapStreamConsumerHandler(handler types.StreamConsumerHandler, moduleName, serviceName string) types.StreamConsumerHandler {
-	return func(ctx context.Context, msgs []*types.Msg) error {
-		// For stream consumers, validate using the first message's token
-		if len(msgs) == 0 {
-			// No messages, call original handler
-			return handler(ctx, msgs)
-		}
-
-		firstMsg := msgs[0]
-
-		// Extract token from first message headers
-		token, err := extractToken(firstMsg.Header, m.config.HeaderKey, m.config.TokenPrefix)
-		if err != nil {
-			// Token extraction failed
-			if m.config.Optional {
-				// Optional mode: allow request without token
-				m.logger.Debug("JWT token not found, allowing request in optional mode",
-					"module", moduleName,
-					"service", serviceName,
-					"error", err,
-				)
-				return handler(ctx, msgs)
-			}
-
-			// Required mode: reject request
-			m.logger.Warn("JWT token extraction failed",
-				"module", moduleName,
-				"service", serviceName,
-				"error", err,
-			)
-			return err
-		}
-
-		// Validate token
-		claims, err := m.validator.Validate(ctx, token)
-		if err != nil {
-			// Validation failed
-			m.logger.Warn("JWT validation failed",
-				"module", moduleName,
-				"service", serviceName,
-				"error", err,
-			)
-			return err
-		}
-
-		// Validation succeeded
-		m.logger.Debug("JWT validation succeeded",
-			"module", moduleName,
-			"service", serviceName,
-			"subject", claims["sub"],
-		)
-
-		// Add claims to context
-		ctx = WithClaims(ctx, claims)
-
-		// Call original handler with enhanced context
-		return handler(ctx, msgs)
-	}
-}
 
 // wrapEventConsumerHandler wraps an EventConsumerHandler with JWT validation logic.
 //
@@ -614,7 +585,7 @@ func (m *Middleware) wrapStreamConsumerHandler(handler types.StreamConsumerHandl
 func (m *Middleware) wrapEventConsumerHandler(handler types.EventConsumerHandler, moduleName, eventName string) types.EventConsumerHandler {
 	return func(ctx context.Context, msg *types.Msg) error {
 		// Extract token from message headers
-		token, err := extractToken(msg.Header, m.config.HeaderKey, m.config.TokenPrefix)
+		token, err := m.validator.Extract(msg)
 		if err != nil {
 			// Token extraction failed
 			if m.config.Optional {
@@ -660,81 +631,6 @@ func (m *Middleware) wrapEventConsumerHandler(handler types.EventConsumerHandler
 
 		// Call original handler with enhanced context
 		return handler(ctx, msg)
-	}
-}
-
-// wrapEventStreamConsumerHandler wraps an EventStreamConsumerHandler with JWT validation logic.
-//
-// The wrapper follows the same flow as wrapRequestReplyHandler, but validates the first message
-// in the batch and uses its token for the entire batch:
-//  1. Extract JWT token from first message headers
-//  2. If extraction fails and Optional=true, call original handler without validation
-//  3. If extraction fails and Optional=false, return error
-//  4. Validate token using the validator
-//  5. If validation succeeds, add claims to context and call original handler
-//  6. If validation fails, log warning and return error
-//
-// Note: EventStreamConsumerHandler processes batches of event messages. We validate using the first
-// message's token, assuming all messages in the batch should have the same authentication.
-//
-// Requirements: FR1, FR2, FR3, FR4, FR5, FR6, FR9
-func (m *Middleware) wrapEventStreamConsumerHandler(handler types.EventStreamConsumerHandler, moduleName, eventName string) types.EventStreamConsumerHandler {
-	return func(ctx context.Context, msgs []*types.Msg) error {
-		// For event stream consumers, validate using the first message's token
-		if len(msgs) == 0 {
-			// No messages, call original handler
-			return handler(ctx, msgs)
-		}
-
-		firstMsg := msgs[0]
-
-		// Extract token from first message headers
-		token, err := extractToken(firstMsg.Header, m.config.HeaderKey, m.config.TokenPrefix)
-		if err != nil {
-			// Token extraction failed
-			if m.config.Optional {
-				// Optional mode: allow request without token
-				m.logger.Debug("JWT token not found, allowing request in optional mode",
-					"module", moduleName,
-					"event", eventName,
-					"error", err,
-				)
-				return handler(ctx, msgs)
-			}
-
-			// Required mode: reject request
-			m.logger.Warn("JWT token extraction failed",
-				"module", moduleName,
-				"event", eventName,
-				"error", err,
-			)
-			return err
-		}
-
-		// Validate token
-		claims, err := m.validator.Validate(ctx, token)
-		if err != nil {
-			// Validation failed
-			m.logger.Warn("JWT validation failed",
-				"module", moduleName,
-				"event", eventName,
-				"error", err,
-			)
-			return err
-		}
-
-		// Validation succeeded
-		m.logger.Debug("JWT validation succeeded",
-			"module", moduleName,
-			"event", eventName,
-			"subject", claims["sub"],
-		)
-
-		// Add claims to context
-		ctx = WithClaims(ctx, claims)
-
-		// Call original handler with enhanced context
-		return handler(ctx, msgs)
 	}
 }
 

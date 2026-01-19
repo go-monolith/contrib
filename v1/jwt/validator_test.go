@@ -64,7 +64,7 @@ func TestTokenValidator_ValidToken_HMAC(t *testing.T) {
 
 	provider := &mockKeyProvider{key: secret}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	parsedClaims, err := validator.Validate(ctx, tokenString)
@@ -97,7 +97,7 @@ func TestTokenValidator_ValidToken_RSA(t *testing.T) {
 
 	provider := &mockKeyProvider{key: publicKey}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	parsedClaims, err := validator.Validate(ctx, tokenString)
@@ -130,7 +130,7 @@ func TestTokenValidator_ValidToken_ECDSA(t *testing.T) {
 
 	provider := &mockKeyProvider{key: publicKey}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	parsedClaims, err := validator.Validate(ctx, tokenString)
@@ -161,7 +161,7 @@ func TestTokenValidator_InvalidSignature(t *testing.T) {
 	// Try to validate with a different secret
 	provider := &mockKeyProvider{key: wrongSecret}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	_, err = validator.Validate(ctx, tokenString)
@@ -188,7 +188,7 @@ func TestTokenValidator_UnsupportedAlgorithm(t *testing.T) {
 	config := &Config{
 		AllowedAlgorithms: []string{"HS512"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	_, err = validator.Validate(ctx, tokenString)
@@ -223,7 +223,7 @@ func TestTokenValidator_MalformedToken(t *testing.T) {
 	secret := []byte("test-secret")
 	provider := &mockKeyProvider{key: secret}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	for _, tc := range testCases {
@@ -252,7 +252,7 @@ func TestTokenValidator_KeyProviderError(t *testing.T) {
 	providerErr := errors.New("key provider error")
 	provider := &mockKeyProvider{err: providerErr}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	_, err = validator.Validate(ctx, tokenString)
@@ -278,7 +278,7 @@ func TestTokenValidator_TokenWithKid(t *testing.T) {
 
 	provider := &mockKeyProvider{key: secret}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	parsedClaims, err := validator.Validate(ctx, tokenString)
@@ -307,7 +307,7 @@ func TestTokenValidator_ExpiredToken(t *testing.T) {
 
 	provider := &mockKeyProvider{key: secret}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 	_, err = validator.Validate(ctx, tokenString)
@@ -322,7 +322,7 @@ func TestNewTokenValidator(t *testing.T) {
 	provider := &mockKeyProvider{key: []byte("test")}
 	config := &Config{}
 
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 	if validator == nil {
 		t.Fatal("NewTokenValidator() returned nil")
 	}
@@ -340,7 +340,7 @@ func TestValidateStandardClaims_ExpiredToken(t *testing.T) {
 	config := &Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Token expired 2 minutes ago (beyond clock skew)
 	claims := jwt.MapClaims{
@@ -358,7 +358,7 @@ func TestValidateStandardClaims_ExpiredToken_WithinClockSkew(t *testing.T) {
 	config := &Config{
 		ClockSkew: 2 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Token expired 1 minute ago (within clock skew of 2 minutes)
 	claims := jwt.MapClaims{
@@ -376,7 +376,7 @@ func TestValidateStandardClaims_NotYetValid(t *testing.T) {
 	config := &Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Token valid 2 minutes from now (beyond clock skew)
 	claims := jwt.MapClaims{
@@ -394,7 +394,7 @@ func TestValidateStandardClaims_NotYetValid_WithinClockSkew(t *testing.T) {
 	config := &Config{
 		ClockSkew: 2 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Token valid 1 minute from now (within clock skew)
 	claims := jwt.MapClaims{
@@ -412,7 +412,7 @@ func TestValidateStandardClaims_InvalidIssuedAt(t *testing.T) {
 	config := &Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Token issued 2 minutes in the future (beyond clock skew)
 	claims := jwt.MapClaims{
@@ -430,7 +430,7 @@ func TestValidateStandardClaims_ValidIssuedAt_WithinClockSkew(t *testing.T) {
 	config := &Config{
 		ClockSkew: 2 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Token issued 1 minute in the future (within clock skew)
 	claims := jwt.MapClaims{
@@ -450,7 +450,7 @@ func TestValidateIssuer_ValidIssuer(t *testing.T) {
 	config := &Config{
 		ExpectedIssuer: "https://auth.example.com",
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"iss": "https://auth.example.com",
@@ -467,7 +467,7 @@ func TestValidateIssuer_InvalidIssuer(t *testing.T) {
 	config := &Config{
 		ExpectedIssuer: "https://auth.example.com",
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"iss": "https://different-issuer.com",
@@ -484,7 +484,7 @@ func TestValidateIssuer_MissingIssuer(t *testing.T) {
 	config := &Config{
 		ExpectedIssuer: "https://auth.example.com",
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{}
 
@@ -497,7 +497,7 @@ func TestValidateIssuer_MissingIssuer(t *testing.T) {
 func TestValidateIssuer_NoExpectedIssuer(t *testing.T) {
 	provider := &mockKeyProvider{key: []byte("test")}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"iss": "https://any-issuer.com",
@@ -516,7 +516,7 @@ func TestValidateAudience_SingleAudience_Match(t *testing.T) {
 	config := &Config{
 		ExpectedAudience: []string{"https://api.example.com"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"aud": "https://api.example.com",
@@ -533,7 +533,7 @@ func TestValidateAudience_MultipleAudiences_Match(t *testing.T) {
 	config := &Config{
 		ExpectedAudience: []string{"https://api1.example.com", "https://api2.example.com"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Token has one of the expected audiences
 	claims := jwt.MapClaims{
@@ -551,7 +551,7 @@ func TestValidateAudience_NoMatch(t *testing.T) {
 	config := &Config{
 		ExpectedAudience: []string{"https://api.example.com"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"aud": "https://different-api.com",
@@ -568,7 +568,7 @@ func TestValidateAudience_MissingAudience(t *testing.T) {
 	config := &Config{
 		ExpectedAudience: []string{"https://api.example.com"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{}
 
@@ -581,7 +581,7 @@ func TestValidateAudience_MissingAudience(t *testing.T) {
 func TestValidateAudience_NoExpectedAudience(t *testing.T) {
 	provider := &mockKeyProvider{key: []byte("test")}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"aud": "https://any-audience.com",
@@ -600,7 +600,7 @@ func TestValidateRequiredClaims_AllPresent(t *testing.T) {
 	config := &Config{
 		RequiredClaims: []string{"sub", "email", "role"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"sub":   "user123",
@@ -619,7 +619,7 @@ func TestValidateRequiredClaims_MissingClaim(t *testing.T) {
 	config := &Config{
 		RequiredClaims: []string{"sub", "email", "role"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"sub":   "user123",
@@ -638,7 +638,7 @@ func TestValidateRequiredClaims_EmptyString(t *testing.T) {
 	config := &Config{
 		RequiredClaims: []string{"sub", "email"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"sub":   "user123",
@@ -656,7 +656,7 @@ func TestValidateRequiredClaims_NilValue(t *testing.T) {
 	config := &Config{
 		RequiredClaims: []string{"sub"},
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"sub": nil,
@@ -671,7 +671,7 @@ func TestValidateRequiredClaims_NilValue(t *testing.T) {
 func TestValidateRequiredClaims_NoRequiredClaims(t *testing.T) {
 	provider := &mockKeyProvider{key: []byte("test")}
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	claims := jwt.MapClaims{
 		"sub": "user123",
@@ -745,7 +745,7 @@ func TestTokenValidator_RefreshOnSignatureFailure(t *testing.T) {
 	config := &Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Initial cache refresh with old key
 	ctx := context.Background()
@@ -820,7 +820,7 @@ func TestTokenValidator_RefreshOnSignatureFailure_StillFails(t *testing.T) {
 	cache := NewJWKSCache(15 * time.Minute)
 	provider := NewJWKSKeyProvider(server.URL, cache, 10*time.Second)
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Create token with invalid signature
 	tokenString := testutil.GenerateInvalidSignatureJWT()
@@ -842,7 +842,7 @@ func TestTokenValidator_NoRefreshWithStaticProvider(t *testing.T) {
 	secret := testutil.GenerateHMACTestKey()
 	provider := NewStaticKeyProvider(secret)
 	config := &Config{}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Create token with invalid signature
 	tokenString := testutil.GenerateInvalidSignatureJWT()

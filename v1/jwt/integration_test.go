@@ -29,7 +29,7 @@ func TestStaticKeyMode_HMAC_CompleteFlow(t *testing.T) {
 	config := &jwt.Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	// Generate a valid token
 	claims := map[string]interface{}{
@@ -89,7 +89,7 @@ func TestStaticKeyMode_RSA_CompleteFlow(t *testing.T) {
 	config := &jwt.Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	// Generate a valid token
 	claims := map[string]interface{}{
@@ -121,7 +121,7 @@ func TestStaticKeyMode_ECDSA_CompleteFlow(t *testing.T) {
 	config := &jwt.Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	// Generate a valid token
 	claims := map[string]interface{}{
@@ -150,7 +150,7 @@ func TestStaticKeyMode_ExpiredToken(t *testing.T) {
 	config := &jwt.Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	// Generate an expired token
 	tokenString := testutil.GenerateExpiredJWT(secret)
@@ -168,7 +168,7 @@ func TestStaticKeyMode_InvalidSignature(t *testing.T) {
 	secret := testutil.GenerateHMACTestKey()
 	provider := jwt.NewStaticKeyProvider(secret)
 	config := &jwt.Config{}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	// Generate a token with invalid signature
 	tokenString := testutil.GenerateInvalidSignatureJWT()
@@ -211,7 +211,7 @@ func TestStaticKeyMode_IssuerValidation(t *testing.T) {
 			config := &jwt.Config{
 				ExpectedIssuer: tc.expectedIss,
 			}
-			validator := jwt.NewTokenValidator(provider, config)
+			validator := jwt.NewTokenValidator(provider, config, nil)
 
 			tokenString := testutil.GenerateTokenWithIssuer(secret, tc.tokenIss)
 
@@ -264,7 +264,7 @@ func TestStaticKeyMode_AudienceValidation(t *testing.T) {
 			config := &jwt.Config{
 				ExpectedAudience: tc.expectedAud,
 			}
-			validator := jwt.NewTokenValidator(provider, config)
+			validator := jwt.NewTokenValidator(provider, config, nil)
 
 			tokenString := testutil.GenerateTokenWithAudience(secret, tc.tokenAud)
 
@@ -288,7 +288,7 @@ func TestStaticKeyMode_RequiredClaims(t *testing.T) {
 	config := &jwt.Config{
 		RequiredClaims: []string{"sub", "email", "role"},
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	testCases := []struct {
 		name          string
@@ -380,7 +380,7 @@ func TestStaticKeyMode_AlgorithmWhitelist(t *testing.T) {
 			config := &jwt.Config{
 				AllowedAlgorithms: tc.allowedAlgs,
 			}
-			validator := jwt.NewTokenValidator(provider, config)
+			validator := jwt.NewTokenValidator(provider, config, nil)
 
 			claims := map[string]interface{}{
 				"sub": "user123",
@@ -408,7 +408,7 @@ func TestStaticKeyMode_ClockSkewTolerance(t *testing.T) {
 	config := &jwt.Config{
 		ClockSkew: 2 * time.Minute,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	// Token expired 1 minute ago (within clock skew of 2 minutes)
 	claims := map[string]interface{}{
@@ -546,7 +546,7 @@ func TestJWKSMode_CompleteFlow(t *testing.T) {
 		ExpectedAudience:    []string{"test-audience"},
 		JWKSRefreshInterval: 100 * time.Millisecond,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 
@@ -713,7 +713,7 @@ func TestJWKSMode_KeyRotation(t *testing.T) {
 	config := &jwt.Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 
@@ -808,7 +808,7 @@ func TestJWKSMode_MultipleKeysInJWKS(t *testing.T) {
 	config := &jwt.Config{
 		ClockSkew: 1 * time.Minute,
 	}
-	validator := jwt.NewTokenValidator(provider, config)
+	validator := jwt.NewTokenValidator(provider, config, nil)
 
 	ctx := context.Background()
 
@@ -874,7 +874,7 @@ func TestJWKSMode_BackgroundRefresh(t *testing.T) {
 		ClockSkew:           1 * time.Minute,
 		JWKSRefreshInterval: 100 * time.Millisecond,
 	}
-	_ = jwt.NewTokenValidator(provider, config) // Validator created for completeness
+	_ = jwt.NewTokenValidator(provider, config, nil) // Validator created for completeness
 
 	// Initial fetch
 	ctx := context.Background()

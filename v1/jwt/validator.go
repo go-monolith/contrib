@@ -3,9 +3,11 @@ package jwt
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/go-monolith/mono/pkg/types"
 )
 
 // DefaultAllowedAlgorithms is the default list of allowed signing algorithms
@@ -21,13 +23,18 @@ var DefaultAllowedAlgorithms = []string{
 type TokenValidator struct {
 	keyProvider KeyProvider
 	config      *Config
+	logger      *slog.Logger
 }
 
-// NewTokenValidator creates a new token validator with the given key provider and config.
-func NewTokenValidator(keyProvider KeyProvider, config *Config) *TokenValidator {
+// NewTokenValidator creates a new token validator with the given key provider, config, and logger.
+func NewTokenValidator(keyProvider KeyProvider, config *Config, logger *slog.Logger) *TokenValidator {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &TokenValidator{
 		keyProvider: keyProvider,
 		config:      config,
+		logger:      logger,
 	}
 }
 
@@ -170,6 +177,32 @@ func (v *TokenValidator) parseToken(ctx context.Context, tokenString string) (*j
 	})
 
 	return token, err
+}
+
+// Extract extracts a JWT token from message headers.
+//
+// It performs case-insensitive lookup for the header key and validates
+// the header format to match: "<prefix> <token>".
+//
+// This method is exposed publicly to allow modules to reuse the extraction logic
+// when they need to handle JWT tokens directly without going through the middleware.
+//
+// Parameters:
+//   - msg: The NATS message to extract the token from
+//
+// Returns:
+//   - The extracted token string
+//   - ErrMissingAuthHeader if the header is not found
+//   - ErrInvalidAuthHeader if the header format is invalid
+//
+// Example:
+//
+//	token, err := validator.Extract(msg)
+//	if err != nil {
+//	    return err
+//	}
+func (v *TokenValidator) Extract(msg *types.Msg) (string, error) {
+	return extractToken(msg.Header, v.config.HeaderKey, v.config.TokenPrefix)
 }
 
 // validateStandardClaims validates the standard JWT claims (exp, nbf, iat) with clock skew.

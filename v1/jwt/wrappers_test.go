@@ -103,98 +103,8 @@ func TestWrapQueueGroupHandler_InvalidToken(t *testing.T) {
 }
 
 // TestWrapStreamConsumerHandler_ValidToken tests StreamConsumer handler with valid token.
-func TestWrapStreamConsumerHandler_ValidToken(t *testing.T) {
-	secret := testutil.GenerateHMACTestKey()
-
-	mw, err := New(
-		WithSecret(secret),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create middleware: %v", err)
-	}
-	mw.logger = slog.Default()
-
-	// Generate valid JWT
-	claims := map[string]interface{}{
-		"sub": "user123",
-	}
-	token := testutil.GenerateValidJWT(secret, claims)
-
-	// Create messages with token (StreamConsumer takes a slice of messages)
-	msgs := []*types.Msg{
-		{
-			Header: map[string][]string{
-				"Authorization": {"Bearer " + token},
-			},
-		},
-	}
-
-	handlerCalled := false
-	var receivedClaims map[string]interface{}
-
-	handler := func(ctx context.Context, msgs []*types.Msg) error {
-		handlerCalled = true
-		if claims, ok := ClaimsFromContext(ctx); ok {
-			receivedClaims = map[string]interface{}(claims)
-		}
-		return nil
-	}
-
-	wrapped := mw.wrapStreamConsumerHandler(handler, "test", "TestService")
-
-	err = wrapped(context.Background(), msgs)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if !handlerCalled {
-		t.Error("Expected handler to be called")
-	}
-
-	if receivedClaims == nil {
-		t.Error("Expected claims in context")
-	} else if receivedClaims["sub"] != "user123" {
-		t.Errorf("Expected sub=user123, got: %v", receivedClaims["sub"])
-	}
-}
 
 // TestWrapStreamConsumerHandler_InvalidToken tests StreamConsumer handler with invalid token.
-func TestWrapStreamConsumerHandler_InvalidToken(t *testing.T) {
-	secret := testutil.GenerateHMACTestKey()
-
-	mw, err := New(
-		WithSecret(secret),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create middleware: %v", err)
-	}
-	mw.logger = slog.Default()
-
-	msgs := []*types.Msg{
-		{
-			Header: map[string][]string{
-				"Authorization": {"Bearer invalid.token.here"},
-			},
-		},
-	}
-
-	handlerCalled := false
-	handler := func(ctx context.Context, msgs []*types.Msg) error {
-		handlerCalled = true
-		return nil
-	}
-
-	wrapped := mw.wrapStreamConsumerHandler(handler, "test", "TestService")
-
-	err = wrapped(context.Background(), msgs)
-	if err == nil {
-		t.Fatal("Expected error for invalid token, got nil")
-	}
-
-	if handlerCalled {
-		t.Error("Expected handler NOT to be called with invalid token")
-	}
-}
 
 // TestWrapEventConsumerHandler_ValidToken tests EventConsumer handler with valid token.
 func TestWrapEventConsumerHandler_ValidToken(t *testing.T) {
@@ -287,98 +197,8 @@ func TestWrapEventConsumerHandler_InvalidToken(t *testing.T) {
 }
 
 // TestWrapEventStreamConsumerHandler_ValidToken tests EventStreamConsumer handler with valid token.
-func TestWrapEventStreamConsumerHandler_ValidToken(t *testing.T) {
-	secret := testutil.GenerateHMACTestKey()
-
-	mw, err := New(
-		WithSecret(secret),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create middleware: %v", err)
-	}
-	mw.logger = slog.Default()
-
-	// Generate valid JWT
-	claims := map[string]interface{}{
-		"sub": "user123",
-	}
-	token := testutil.GenerateValidJWT(secret, claims)
-
-	// Create messages with token (EventStreamConsumer takes a slice of messages)
-	msgs := []*types.Msg{
-		{
-			Header: map[string][]string{
-				"Authorization": {"Bearer " + token},
-			},
-		},
-	}
-
-	handlerCalled := false
-	var receivedClaims map[string]interface{}
-
-	handler := func(ctx context.Context, msgs []*types.Msg) error {
-		handlerCalled = true
-		if claims, ok := ClaimsFromContext(ctx); ok {
-			receivedClaims = map[string]interface{}(claims)
-		}
-		return nil
-	}
-
-	wrapped := mw.wrapEventStreamConsumerHandler(handler, "test", "TestEvent")
-
-	err = wrapped(context.Background(), msgs)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if !handlerCalled {
-		t.Error("Expected handler to be called")
-	}
-
-	if receivedClaims == nil {
-		t.Error("Expected claims in context")
-	} else if receivedClaims["sub"] != "user123" {
-		t.Errorf("Expected sub=user123, got: %v", receivedClaims["sub"])
-	}
-}
 
 // TestWrapEventStreamConsumerHandler_InvalidToken tests EventStreamConsumer handler with invalid token.
-func TestWrapEventStreamConsumerHandler_InvalidToken(t *testing.T) {
-	secret := testutil.GenerateHMACTestKey()
-
-	mw, err := New(
-		WithSecret(secret),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create middleware: %v", err)
-	}
-	mw.logger = slog.Default()
-
-	msgs := []*types.Msg{
-		{
-			Header: map[string][]string{
-				"Authorization": {"Bearer invalid.token.here"},
-			},
-		},
-	}
-
-	handlerCalled := false
-	handler := func(ctx context.Context, msgs []*types.Msg) error {
-		handlerCalled = true
-		return nil
-	}
-
-	wrapped := mw.wrapEventStreamConsumerHandler(handler, "test", "TestEvent")
-
-	err = wrapped(context.Background(), msgs)
-	if err == nil {
-		t.Fatal("Expected error for invalid token, got nil")
-	}
-
-	if handlerCalled {
-		t.Error("Expected handler NOT to be called with invalid token")
-	}
-}
 
 // TestWrappers_OptionalMode tests that all wrappers respect optional mode.
 func TestWrappers_OptionalMode(t *testing.T) {
@@ -434,24 +254,6 @@ func TestWrappers_OptionalMode(t *testing.T) {
 		}
 	})
 
-	// Test StreamConsumerHandler
-	t.Run("StreamConsumerHandler", func(t *testing.T) {
-		handlerCalled := false
-		handler := func(ctx context.Context, msgs []*types.Msg) error {
-			handlerCalled = true
-			return nil
-		}
-
-		msgs := []*types.Msg{msg}
-		wrapped := mw.wrapStreamConsumerHandler(handler, "test", "TestService")
-		err := wrapped(context.Background(), msgs)
-		if err != nil {
-			t.Fatalf("Expected no error in optional mode, got: %v", err)
-		}
-		if !handlerCalled {
-			t.Error("Expected handler to be called in optional mode")
-		}
-	})
 
 	// Test EventConsumerHandler
 	t.Run("EventConsumerHandler", func(t *testing.T) {
@@ -471,24 +273,6 @@ func TestWrappers_OptionalMode(t *testing.T) {
 		}
 	})
 
-	// Test EventStreamConsumerHandler
-	t.Run("EventStreamConsumerHandler", func(t *testing.T) {
-		handlerCalled := false
-		handler := func(ctx context.Context, msgs []*types.Msg) error {
-			handlerCalled = true
-			return nil
-		}
-
-		msgs := []*types.Msg{msg}
-		wrapped := mw.wrapEventStreamConsumerHandler(handler, "test", "TestEvent")
-		err := wrapped(context.Background(), msgs)
-		if err != nil {
-			t.Fatalf("Expected no error in optional mode, got: %v", err)
-		}
-		if !handlerCalled {
-			t.Error("Expected handler to be called in optional mode")
-		}
-	})
 }
 
 // TestWrappers_HandlerErrors tests that handler errors are propagated correctly.
@@ -543,19 +327,6 @@ func TestWrappers_HandlerErrors(t *testing.T) {
 		}
 	})
 
-	// Test StreamConsumerHandler
-	t.Run("StreamConsumerHandler", func(t *testing.T) {
-		handler := func(ctx context.Context, msgs []*types.Msg) error {
-			return testErr
-		}
-
-		msgs := []*types.Msg{msg}
-		wrapped := mw.wrapStreamConsumerHandler(handler, "test", "TestService")
-		err := wrapped(context.Background(), msgs)
-		if err != testErr {
-			t.Errorf("Expected handler error to be propagated, got: %v", err)
-		}
-	})
 
 	// Test EventConsumerHandler
 	t.Run("EventConsumerHandler", func(t *testing.T) {
@@ -570,17 +341,4 @@ func TestWrappers_HandlerErrors(t *testing.T) {
 		}
 	})
 
-	// Test EventStreamConsumerHandler
-	t.Run("EventStreamConsumerHandler", func(t *testing.T) {
-		handler := func(ctx context.Context, msgs []*types.Msg) error {
-			return testErr
-		}
-
-		msgs := []*types.Msg{msg}
-		wrapped := mw.wrapEventStreamConsumerHandler(handler, "test", "TestEvent")
-		err := wrapped(context.Background(), msgs)
-		if err != testErr {
-			t.Errorf("Expected handler error to be propagated, got: %v", err)
-		}
-	})
 }

@@ -45,7 +45,7 @@ func TestMiddleware_BackgroundRefresh_StartsAndRefreshes(t *testing.T) {
 		JWKSRefreshInterval: 100 * time.Millisecond, // Fast refresh for testing
 		ClockSkew:           1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Create middleware with background refresh enabled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -116,7 +116,7 @@ func TestMiddleware_BackgroundRefresh_StopsOnCancel(t *testing.T) {
 		JWKSRefreshInterval: 100 * time.Millisecond, // Fast refresh for testing
 		ClockSkew:           1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Create middleware
 	ctx, cancel := context.WithCancel(context.Background())
@@ -181,7 +181,7 @@ func TestMiddleware_BackgroundRefresh_NoGoroutineLeak(t *testing.T) {
 		JWKSRefreshInterval: 50 * time.Millisecond,
 		ClockSkew:           1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Create a WaitGroup to track goroutine completion
 	var wg sync.WaitGroup
@@ -255,7 +255,7 @@ func TestMiddleware_BackgroundRefresh_RefreshFailure(t *testing.T) {
 		JWKSRefreshInterval: 100 * time.Millisecond,
 		ClockSkew:           1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Create middleware
 	ctx, cancel := context.WithCancel(context.Background())
@@ -303,7 +303,7 @@ func TestMiddleware_BackgroundRefresh_WithStaticProvider(t *testing.T) {
 		JWKSRefreshInterval: 100 * time.Millisecond,
 		ClockSkew:           1 * time.Minute,
 	}
-	validator := NewTokenValidator(provider, config)
+	validator := NewTokenValidator(provider, config, nil)
 
 	// Create middleware
 	ctx, cancel := context.WithCancel(context.Background())

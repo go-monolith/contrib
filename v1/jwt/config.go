@@ -2,6 +2,8 @@ package jwt
 
 import (
 	"crypto"
+	"fmt"
+	"net/url"
 	"time"
 )
 
@@ -111,6 +113,15 @@ func validateConfig(cfg *Config) error {
 
 	// Validate JWKS settings if endpoint is configured
 	if cfg.JWKSEndpoint != "" {
+		// Validate JWKS endpoint URL
+		parsedURL, err := url.Parse(cfg.JWKSEndpoint)
+		if err != nil {
+			return fmt.Errorf("invalid JWKS endpoint URL: %w", err)
+		}
+		if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+			return fmt.Errorf("JWKS endpoint must use http or https scheme")
+		}
+
 		if cfg.JWKSCacheTTL <= 0 {
 			cfg.JWKSCacheTTL = 1 * time.Hour // Apply default
 		}

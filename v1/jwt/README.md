@@ -262,17 +262,17 @@ func (m *MyModule) HandleProcessTask(ctx context.Context, msg *types.Msg) error 
 
 ### Example 3: StreamConsumer Handler (Manual Validation Required)
 
-**Note:** Batch handlers (StreamConsumer, EventStreamConsumer) are NOT automatically wrapped by the middleware because validating only the first message would be insecure - each message may have a different authentication context. You must validate each message individually using the exposed `Validator()` method.
+**Note:** Batch handlers (StreamConsumer, EventStreamConsumer) are NOT automatically wrapped by the middleware because validating only the first message would be insecure - each message may have a different authentication context. You must validate each message individually using the exposed `Extract()` and `Validator()` method.
 
 ```go
 type MyModule struct {
     jwtValidator *jwt.TokenValidator
 }
 
-// Pass the JWT middleware to your module constructor
-func NewMyModule(jwtMw *jwt.Middleware) *MyModule {
+// Pass the JWT middleware.Validator() as `validator` to your module constructor
+func NewMyModule(validator *jwt.TokenValidator) *MyModule {
     return &MyModule{
-        jwtValidator: jwtMw.Validator(),
+        jwtValidator: validator,
     }
 }
 
@@ -331,17 +331,17 @@ func (m *MyModule) HandleUserCreated(ctx context.Context, msg *types.Msg) error 
 
 ### Example 5: EventStreamConsumer Handler (Manual Validation Required)
 
-**Note:** Like StreamConsumer, EventStreamConsumer handlers require manual validation of each message to ensure security. Use the exposed `Validator()` method.
+**Note:** Like StreamConsumer, EventStreamConsumer handlers require manual validation of each message to ensure security. Use the exposed `Extract()` and `Validator()` method.
 
 ```go
 type MyModule struct {
     jwtValidator *jwt.TokenValidator
 }
 
-// Pass the JWT middleware to your module constructor
-func NewMyModule(jwtMw *jwt.Middleware) *MyModule {
+// Pass the JWT middleware.Validator() as `validator` to your module constructor
+func NewMyModule(validator *jwt.TokenValidator) *MyModule {
     return &MyModule{
-        jwtValidator: jwtMw.Validator(),
+        jwtValidator: validator,
     }
 }
 

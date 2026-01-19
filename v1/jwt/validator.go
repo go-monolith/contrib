@@ -27,6 +27,16 @@ type TokenValidator struct {
 }
 
 // NewTokenValidator creates a new token validator with the given key provider, config, and logger.
+//
+// Example:
+//
+//	provider := NewStaticKeyProvider([]byte("my-secret"))
+//	config := &Config{
+//	    ClockSkew: 1 * time.Minute,
+//	    HeaderKey: "authorization",
+//	    TokenPrefix: "Bearer ",
+//	}
+//	validator := NewTokenValidator(provider, config, slog.Default())
 func NewTokenValidator(keyProvider KeyProvider, config *Config, logger *slog.Logger) *TokenValidator {
 	if logger == nil {
 		logger = slog.Default()
@@ -54,6 +64,16 @@ func NewTokenValidator(keyProvider KeyProvider, config *Config, logger *slog.Log
 //   the case where keys have been rotated.
 //
 // Returns the claims if validation succeeds, or an error if validation fails.
+//
+// Example:
+//
+//	validator := NewTokenValidator(provider, config, logger)
+//	claims, err := validator.Validate(ctx, "eyJhbGciOiJIUzI1NiIs...")
+//	if err != nil {
+//	    log.Printf("Token validation failed: %v", err)
+//	    return err
+//	}
+//	userID := claims["sub"].(string)
 func (v *TokenValidator) Validate(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
 	// Try to parse and validate the token
 	token, err := v.parseToken(ctx, tokenString)

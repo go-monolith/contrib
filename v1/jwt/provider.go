@@ -33,6 +33,15 @@ type StaticKeyProvider struct {
 //   - []byte for HMAC (HS256/HS384/HS512)
 //   - *rsa.PublicKey for RSA (RS256/RS384/RS512)
 //   - *ecdsa.PublicKey for ECDSA (ES256/ES384/ES512)
+//
+// Example:
+//
+//	// For HMAC
+//	provider := NewStaticKeyProvider([]byte("my-secret-key"))
+//
+//	// For RSA
+//	rsaKey, _ := ParseRSAPublicKeyFromPEM(pemData)
+//	provider := NewStaticKeyProvider(rsaKey)
 func NewStaticKeyProvider(key interface{}) *StaticKeyProvider {
 	return &StaticKeyProvider{key: key}
 }
@@ -41,6 +50,14 @@ func NewStaticKeyProvider(key interface{}) *StaticKeyProvider {
 //
 // For static key providers, the kid parameter is ignored since there is only
 // one key configured.
+//
+// Example:
+//
+//	provider := NewStaticKeyProvider([]byte("my-secret"))
+//	key, err := provider.GetKey(ctx, "") // kid is ignored
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 func (p *StaticKeyProvider) GetKey(ctx context.Context, kid string) (interface{}, error) {
 	return p.key, nil
 }
@@ -58,6 +75,21 @@ type SecretProviderKeyProvider struct {
 }
 
 // NewSecretProviderKeyProvider creates a new secret provider key provider.
+//
+// Example:
+//
+//	secretStore := map[string][]byte{
+//	    "tenant-1": []byte("secret-1"),
+//	    "tenant-2": []byte("secret-2"),
+//	}
+//	provider := func(issuer string) ([]byte, error) {
+//	    secret, ok := secretStore[issuer]
+//	    if !ok {
+//	        return nil, fmt.Errorf("unknown issuer: %s", issuer)
+//	    }
+//	    return secret, nil
+//	}
+//	keyProvider := NewSecretProviderKeyProvider(provider)
 func NewSecretProviderKeyProvider(provider SecretProvider) *SecretProviderKeyProvider {
 	return &SecretProviderKeyProvider{
 		provider: provider,
@@ -69,6 +101,14 @@ func NewSecretProviderKeyProvider(provider SecretProvider) *SecretProviderKeyPro
 // For SecretProviderKeyProvider, the kid parameter is repurposed to pass the issuer.
 // The validator extracts the issuer from the unverified token claims and passes
 // it as the kid parameter.
+//
+// Example:
+//
+//	keyProvider := NewSecretProviderKeyProvider(provider)
+//	secret, err := keyProvider.GetKey(ctx, "tenant-1")
+//	if err != nil {
+//	    log.Printf("Failed to get secret: %v", err)
+//	}
 func (p *SecretProviderKeyProvider) GetKey(ctx context.Context, issuer string) (interface{}, error) {
 	// If issuer is empty, return error
 	if issuer == "" {

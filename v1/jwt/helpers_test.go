@@ -11,7 +11,7 @@ import (
 )
 
 // Helper function to generate RSA PEM in PKIX format (PUBLIC KEY)
-func generateRSAPublicKeyPEM_PKIX(t *testing.T) ([]byte, *rsa.PublicKey) {
+func generateRSAPublicKeyPEMPKIX(t *testing.T) ([]byte, *rsa.PublicKey) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("Failed to generate RSA key: %v", err)
@@ -31,7 +31,7 @@ func generateRSAPublicKeyPEM_PKIX(t *testing.T) ([]byte, *rsa.PublicKey) {
 }
 
 // Helper function to generate RSA PEM in PKCS#1 format (RSA PUBLIC KEY)
-func generateRSAPublicKeyPEM_PKCS1(t *testing.T) ([]byte, *rsa.PublicKey) {
+func generateRSAPublicKeyPEMPKCS1(t *testing.T) ([]byte, *rsa.PublicKey) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("Failed to generate RSA key: %v", err)
@@ -48,7 +48,7 @@ func generateRSAPublicKeyPEM_PKCS1(t *testing.T) ([]byte, *rsa.PublicKey) {
 }
 
 // Helper function to generate ECDSA PEM in PKIX format (PUBLIC KEY)
-func generateECDSAPublicKeyPEM_PKIX(t *testing.T) ([]byte, *ecdsa.PublicKey) {
+func generateECDSAPublicKeyPEMPKIX(t *testing.T) ([]byte, *ecdsa.PublicKey) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("Failed to generate ECDSA key: %v", err)
@@ -68,7 +68,7 @@ func generateECDSAPublicKeyPEM_PKIX(t *testing.T) ([]byte, *ecdsa.PublicKey) {
 }
 
 func TestParseRSAPublicKeyFromPEM_PKIX(t *testing.T) {
-	pemData, expectedKey := generateRSAPublicKeyPEM_PKIX(t)
+	pemData, expectedKey := generateRSAPublicKeyPEMPKIX(t)
 
 	parsedKey, err := ParseRSAPublicKeyFromPEM(pemData)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestParseRSAPublicKeyFromPEM_PKIX(t *testing.T) {
 }
 
 func TestParseRSAPublicKeyFromPEM_PKCS1(t *testing.T) {
-	pemData, expectedKey := generateRSAPublicKeyPEM_PKCS1(t)
+	pemData, expectedKey := generateRSAPublicKeyPEMPKCS1(t)
 
 	parsedKey, err := ParseRSAPublicKeyFromPEM(pemData)
 	if err != nil {
@@ -112,7 +112,7 @@ func TestParseRSAPublicKeyFromPEM_InvalidPEM(t *testing.T) {
 
 func TestParseRSAPublicKeyFromPEM_WrongKeyType(t *testing.T) {
 	// Generate ECDSA key PEM
-	ecdsaPEM, _ := generateECDSAPublicKeyPEM_PKIX(t)
+	ecdsaPEM, _ := generateECDSAPublicKeyPEMPKIX(t)
 
 	_, err := ParseRSAPublicKeyFromPEM(ecdsaPEM)
 	if err == nil {
@@ -132,7 +132,7 @@ MIIBkTCB+wIJAKHHCgVZU7GzMA0GCSqGSIb3DQEBCwUAMBMxETAPBgNVBAMMCHRl
 }
 
 func TestParseECDSAPublicKeyFromPEM_PKIX(t *testing.T) {
-	pemData, expectedKey := generateECDSAPublicKeyPEM_PKIX(t)
+	pemData, expectedKey := generateECDSAPublicKeyPEMPKIX(t)
 
 	parsedKey, err := ParseECDSAPublicKeyFromPEM(pemData)
 	if err != nil {
@@ -162,7 +162,7 @@ func TestParseECDSAPublicKeyFromPEM_InvalidPEM(t *testing.T) {
 
 func TestParseECDSAPublicKeyFromPEM_WrongKeyType(t *testing.T) {
 	// Generate RSA key PEM
-	rsaPEM, _ := generateRSAPublicKeyPEM_PKIX(t)
+	rsaPEM, _ := generateRSAPublicKeyPEMPKIX(t)
 
 	_, err := ParseECDSAPublicKeyFromPEM(rsaPEM)
 	if err == nil {

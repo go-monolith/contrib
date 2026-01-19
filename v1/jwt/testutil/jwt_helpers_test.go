@@ -34,7 +34,7 @@ func TestGenerateRSATestKeyPair(t *testing.T) {
 	}
 
 	// Verify the public key matches the private key
-	if privateKey.PublicKey.N.Cmp(publicKey.N) != 0 {
+	if privateKey.N.Cmp(publicKey.N) != 0 {
 		t.Error("Public key doesn't match private key")
 	}
 }
@@ -50,7 +50,7 @@ func TestGenerateECDSATestKeyPair(t *testing.T) {
 	}
 
 	// Verify the public key matches the private key
-	if privateKey.PublicKey.X.Cmp(publicKey.X) != 0 || privateKey.PublicKey.Y.Cmp(publicKey.Y) != 0 {
+	if privateKey.X.Cmp(publicKey.X) != 0 || privateKey.Y.Cmp(publicKey.Y) != 0 {
 		t.Error("Public key doesn't match private key")
 	}
 }

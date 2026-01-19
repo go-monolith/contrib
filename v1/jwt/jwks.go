@@ -145,8 +145,12 @@ func (c *JWKSCache) UpdateLastFetch() {
 //	}
 //	cache.UpdateLastFetch()
 func (c *JWKSCache) Clear() {
-	// Create a new sync.Map to effectively clear all entries
-	c.keys = sync.Map{}
+	// Delete all entries from the sync.Map
+	// We iterate and delete each key to avoid race conditions
+	c.keys.Range(func(key, value interface{}) bool {
+		c.keys.Delete(key)
+		return true // continue iteration
+	})
 }
 
 // JWKSKeyProvider provides keys by fetching from a JWKS endpoint.
@@ -321,7 +325,9 @@ func fetchJWKS(ctx context.Context, endpoint string, httpClient *http.Client) (m
 	if err != nil {
 		return nil, ErrJWKSFetchFailed
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close() //nolint:errcheck // Error on close is not actionable in defer
+	}()
 
 	// Check HTTP status code
 	if resp.StatusCode != http.StatusOK {
@@ -342,7 +348,11 @@ func fetchJWKS(ctx context.Context, endpoint string, httpClient *http.Client) (m
 	iter := set.Keys(ctx)
 	for iter.Next(ctx) {
 		pair := iter.Pair()
-		key := pair.Value.(jwk.Key)
+		key, ok := pair.Value.(jwk.Key)
+		if !ok {
+			// Skip invalid key types
+			continue
+		}
 
 		// Get the key ID (kid)
 		kid := key.KeyID()

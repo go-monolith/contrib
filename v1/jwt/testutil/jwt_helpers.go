@@ -1,3 +1,5 @@
+// Package testutil provides utilities for testing JWT authentication middleware.
+// It includes helpers for generating test JWTs, RSA/ECDSA key pairs, and mock JWKS servers.
 package testutil
 
 import (
@@ -297,7 +299,7 @@ func CreateMockJWKSServer(keys []*MockJWKSKey) *httptest.Server {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwks)
+		_ = json.NewEncoder(w).Encode(jwks) //nolint:errcheck // Test helper writes to ResponseWriter
 	}))
 }
 

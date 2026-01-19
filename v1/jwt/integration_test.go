@@ -581,6 +581,9 @@ func TestJWKSMode_CompleteFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Cached validation failed: %v", err)
 	}
+	if parsedClaims["sub"] != "user123" {
+		t.Errorf("Expected sub='user123' from cached validation, got: %v", parsedClaims["sub"])
+	}
 
 	fetchMu.Lock()
 	cachedFetchCount := fetchCount

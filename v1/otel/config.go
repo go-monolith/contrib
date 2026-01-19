@@ -56,6 +56,13 @@ type Config struct {
 }
 
 // DefaultConfig returns the default configuration for the OTEL middleware.
+//
+// Example:
+//
+//	config := otel.DefaultConfig()
+//	config.Name = "my-otel"
+//	config.TracesEnabled = true
+//	// Then create middleware with custom config
 func DefaultConfig() Config {
 	return Config{
 		Name:               "otel",

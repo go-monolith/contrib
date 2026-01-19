@@ -42,6 +42,21 @@ var _ mono.MiddlewareModule = (*Middleware)(nil)
 // New creates a new OpenTelemetry middleware with the given options.
 // The logger is initialized immediately so it can be used with mono.WithLogger()
 // before the application starts.
+//
+// Example:
+//
+//	tracerProvider := sdktrace.NewTracerProvider(...)
+//	meterProvider := sdkmetric.NewMeterProvider(...)
+//	loggerProvider := sdklog.NewLoggerProvider(...)
+//
+//	otelMw, err := otel.New(
+//	    otel.WithMeterProvider(meterProvider),
+//	    otel.WithTracerProvider(tracerProvider),
+//	    otel.WithLoggerProvider(loggerProvider),
+//	)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 func New(opts ...Option) (*Middleware, error) {
 	config := DefaultConfig()
 	for _, opt := range opts {
@@ -61,12 +76,25 @@ func New(opts ...Option) (*Middleware, error) {
 }
 
 // Name returns the middleware module name.
+//
+// Example:
+//
+//	otelMw, _ := otel.New()
+//	fmt.Println(otelMw.Name()) // Output: otel
 func (m *Middleware) Name() string {
 	return m.config.Name
 }
 
 // Start initializes the OpenTelemetry instruments (metrics and tracing).
 // The logger is already initialized in New().
+//
+// Example:
+//
+//	otelMw, _ := otel.New(otel.WithMeterProvider(meterProvider))
+//	err := otelMw.Start(context.Background())
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 func (m *Middleware) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -84,6 +112,13 @@ func (m *Middleware) Start(ctx context.Context) error {
 }
 
 // Stop performs cleanup.
+//
+// Example:
+//
+//	err := otelMw.Stop(context.Background())
+//	if err != nil {
+//	    log.Printf("Error stopping OTEL middleware: %v", err)
+//	}
 func (m *Middleware) Stop(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -96,6 +131,17 @@ func (m *Middleware) Stop(_ context.Context) error {
 // This logger is available immediately after New() and can be used with
 // mono.WithLogger() for framework-wide logging to OTEL.
 // Returns nil if logs are not enabled.
+//
+// Example:
+//
+//	otelMw, _ := otel.New(otel.WithLoggerProvider(loggerProvider))
+//	logger := otelMw.Logger()
+//	logger.Info("Application started", "version", "1.0.0")
+//
+//	// Or use with Mono framework
+//	app, err := mono.NewMonoApplication(
+//	    mono.WithLogger(otelMw.Logger()),
+//	)
 func (m *Middleware) Logger() *slog.Logger {
 	return m.logger
 }

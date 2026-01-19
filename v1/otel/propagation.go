@@ -72,6 +72,16 @@ func (m *Middleware) injectTraceContext(ctx context.Context, msg *types.Msg) {
 
 // GetTraceID extracts the trace ID from the context.
 // Returns an empty string if no valid trace context exists.
+//
+// Example:
+//
+//	func MyHandler(ctx context.Context, msg *types.Msg) error {
+//	    traceID := otel.GetTraceID(ctx)
+//	    if traceID != "" {
+//	        log.Printf("Processing request with trace ID: %s", traceID)
+//	    }
+//	    return nil
+//	}
 func GetTraceID(ctx context.Context) string {
 	span := trace.SpanFromContext(ctx)
 	if !span.SpanContext().IsValid() {
@@ -82,6 +92,16 @@ func GetTraceID(ctx context.Context) string {
 
 // GetSpanID extracts the span ID from the context.
 // Returns an empty string if no valid trace context exists.
+//
+// Example:
+//
+//	func MyHandler(ctx context.Context, msg *types.Msg) error {
+//	    spanID := otel.GetSpanID(ctx)
+//	    if spanID != "" {
+//	        log.Printf("Processing request with span ID: %s", spanID)
+//	    }
+//	    return nil
+//	}
 func GetSpanID(ctx context.Context) string {
 	span := trace.SpanFromContext(ctx)
 	if !span.SpanContext().IsValid() {
@@ -92,6 +112,16 @@ func GetSpanID(ctx context.Context) string {
 
 // GetTraceContext extracts both trace ID and span ID from the context.
 // Returns empty strings if no valid trace context exists.
+//
+// Example:
+//
+//	func MyHandler(ctx context.Context, msg *types.Msg) error {
+//	    traceID, spanID := otel.GetTraceContext(ctx)
+//	    if traceID != "" {
+//	        log.Printf("Processing request with trace: %s, span: %s", traceID, spanID)
+//	    }
+//	    return nil
+//	}
 func GetTraceContext(ctx context.Context) (traceID, spanID string) {
 	span := trace.SpanFromContext(ctx)
 	if !span.SpanContext().IsValid() {

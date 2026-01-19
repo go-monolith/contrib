@@ -26,16 +26,21 @@ import (
 //	}
 //	token, err := extractToken(headers, "authorization", "Bearer ")
 func extractToken(headers map[string][]string, headerKey, tokenPrefix string) (string, error) {
-	// Perform case-insensitive header lookup
+	// Perform header lookup with optimization
 	var headerValue string
-	headerKeyLower := strings.ToLower(headerKey)
 
-	for key, values := range headers {
-		if strings.ToLower(key) == headerKeyLower {
-			if len(values) > 0 {
-				headerValue = values[0] // Take the first value
+	// Try exact match first (O(1) - most common case)
+	if values, ok := headers[headerKey]; ok && len(values) > 0 {
+		headerValue = values[0]
+	} else {
+		// Fall back to case-insensitive search (O(n))
+		for key, values := range headers {
+			if strings.EqualFold(key, headerKey) {
+				if len(values) > 0 {
+					headerValue = values[0]
+				}
+				break
 			}
-			break
 		}
 	}
 

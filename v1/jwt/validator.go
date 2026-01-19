@@ -191,8 +191,8 @@ func (v *TokenValidator) validateStandardClaims(claims jwt.MapClaims) error {
 		case int64:
 			expTime = time.Unix(v, 0)
 		default:
-			// If exp exists but is not a valid type, ignore it
-			return nil
+			// If exp exists but is not a valid type, fail validation
+			return ErrInvalidClaims
 		}
 
 		// Token is expired if current time > exp + clock skew
@@ -210,8 +210,8 @@ func (v *TokenValidator) validateStandardClaims(claims jwt.MapClaims) error {
 		case int64:
 			nbfTime = time.Unix(v, 0)
 		default:
-			// If nbf exists but is not a valid type, ignore it
-			return nil
+			// If nbf exists but is not a valid type, fail validation
+			return ErrInvalidClaims
 		}
 
 		// Token is not yet valid if current time < nbf - clock skew
@@ -229,8 +229,8 @@ func (v *TokenValidator) validateStandardClaims(claims jwt.MapClaims) error {
 		case int64:
 			iatTime = time.Unix(v, 0)
 		default:
-			// If iat exists but is not a valid type, ignore it
-			return nil
+			// If iat exists but is not a valid type, fail validation
+			return ErrInvalidClaims
 		}
 
 		// Token was issued in the future if iat > now + clock skew

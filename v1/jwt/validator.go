@@ -51,44 +51,20 @@ func (v *TokenValidator) Validate(ctx context.Context, tokenString string) (jwt.
 	// Try to parse and validate the token
 	token, err := v.parseToken(ctx, tokenString)
 
-	// Check for parsing errors
+	// Check for parsing errors and retry with JWKS refresh if applicable
 	if err != nil {
-		// Check if it's a signature error and we're using JWKS
-		if errors.Is(err, jwt.ErrSignatureInvalid) || (token != nil && !token.Valid) {
-			// Check if provider is JWKSKeyProvider
-			if jwksProvider, ok := v.keyProvider.(*JWKSKeyProvider); ok {
-				// Refresh JWKS cache and retry once
+		if jwksProvider, ok := v.keyProvider.(*JWKSKeyProvider); ok {
+			if errors.Is(err, jwt.ErrSignatureInvalid) || (token != nil && !token.Valid) {
 				if refreshErr := jwksProvider.RefreshCache(ctx); refreshErr == nil {
-					// Retry parsing with refreshed cache
 					token, err = v.parseToken(ctx, tokenString)
-					if err == nil && token.Valid {
-						// Success after refresh - continue with validation
-						goto validateClaims
-					}
 				}
 			}
 		}
-
-		// Handle error (original or retry failure)
-		if errors.Is(err, ErrUnsupportedAlgorithm) {
-			return nil, ErrUnsupportedAlgorithm
+		if err != nil {
+			return nil, v.mapParseError(err, token)
 		}
-		if errors.Is(err, jwt.ErrSignatureInvalid) {
-			return nil, ErrInvalidSignature
-		}
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, ErrTokenExpired
-		}
-		if errors.Is(err, jwt.ErrTokenNotValidYet) {
-			return nil, ErrTokenNotYetValid
-		}
-		if token != nil && !token.Valid {
-			return nil, ErrInvalidSignature
-		}
-		return nil, ErrInvalidToken
 	}
 
-validateClaims:
 	// Verify the token is valid
 	if !token.Valid {
 		return nil, ErrInvalidToken
@@ -121,6 +97,26 @@ validateClaims:
 	}
 
 	return claims, nil
+}
+
+// mapParseError maps JWT parsing errors to custom error types.
+func (v *TokenValidator) mapParseError(err error, token *jwt.Token) error {
+	if errors.Is(err, ErrUnsupportedAlgorithm) {
+		return ErrUnsupportedAlgorithm
+	}
+	if errors.Is(err, jwt.ErrSignatureInvalid) {
+		return ErrInvalidSignature
+	}
+	if errors.Is(err, jwt.ErrTokenExpired) {
+		return ErrTokenExpired
+	}
+	if errors.Is(err, jwt.ErrTokenNotValidYet) {
+		return ErrTokenNotYetValid
+	}
+	if token != nil && !token.Valid {
+		return ErrInvalidSignature
+	}
+	return ErrInvalidToken
 }
 
 // parseToken parses a JWT token and verifies its signature.

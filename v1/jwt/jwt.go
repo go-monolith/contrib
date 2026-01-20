@@ -134,11 +134,22 @@ func New(opts ...Option) (*Middleware, error) {
 }
 
 // Name returns the middleware name for Mono framework registration.
+//
+// Example:
+//
+//	mw, _ := jwt.New(jwt.WithSecret([]byte("secret")))
+//	fmt.Println(mw.Name()) // Output: "jwt"
 func (m *Middleware) Name() string {
 	return "jwt"
 }
 
 // Logger returns the logger instance (set by Mono framework).
+//
+// Example:
+//
+//	mw, _ := jwt.New(jwt.WithSecret([]byte("secret")))
+//	logger := mw.Logger()
+//	logger.Info("JWT middleware initialized")
 func (m *Middleware) Logger() *slog.Logger {
 	return m.logger
 }
@@ -164,6 +175,15 @@ func (m *Middleware) Validator() *TokenValidator {
 // Start initializes the middleware and performs startup tasks.
 //
 // For JWKS mode, this fetches the initial key set and starts background refresh.
+//
+// Example:
+//
+//	mw, _ := jwt.New(
+//	    jwt.WithJWKSEndpoint("https://auth.example.com/.well-known/jwks.json"),
+//	)
+//	if err := mw.Start(ctx); err != nil {
+//	    log.Fatal(err)
+//	}
 func (m *Middleware) Start(ctx context.Context) error {
 	// Create refresh context for background goroutine lifecycle management
 	m.refreshCtx, m.refreshCancel = context.WithCancel(context.Background())
@@ -211,6 +231,13 @@ func (m *Middleware) Start(ctx context.Context) error {
 // Stop gracefully shuts down the middleware.
 //
 // This cancels background refresh goroutines and waits for them to exit.
+//
+// Example:
+//
+//	mw, _ := jwt.New(jwt.WithSecret([]byte("secret")))
+//	if err := mw.Stop(ctx); err != nil {
+//	    log.Printf("Error stopping middleware: %v", err)
+//	}
 func (m *Middleware) Stop(ctx context.Context) error {
 	// Cancel the refresh context to signal background goroutines to stop
 	if m.refreshCancel != nil {

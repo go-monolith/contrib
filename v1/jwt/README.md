@@ -659,7 +659,7 @@ jwtMw, err := jwt.New(
 
 ## License
 
-See the main Mono framework repository for license information.
+This package is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 

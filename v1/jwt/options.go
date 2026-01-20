@@ -78,6 +78,13 @@ func WithJWKSEndpoint(endpoint string) Option {
 // WithJWKSCacheTTL sets the duration to cache JWKS keys.
 //
 // Default: 1 hour
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithJWKSEndpoint("https://auth.example.com/.well-known/jwks.json"),
+//	    jwt.WithJWKSCacheTTL(2 * time.Hour),
+//	)
 func WithJWKSCacheTTL(ttl time.Duration) Option {
 	return func(cfg *Config) {
 		cfg.JWKSCacheTTL = ttl
@@ -88,6 +95,13 @@ func WithJWKSCacheTTL(ttl time.Duration) Option {
 //
 // If set to 0, background refresh is disabled.
 // Default: 50 minutes
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithJWKSEndpoint("https://auth.example.com/.well-known/jwks.json"),
+//	    jwt.WithJWKSRefreshInterval(45 * time.Minute),
+//	)
 func WithJWKSRefreshInterval(interval time.Duration) Option {
 	return func(cfg *Config) {
 		cfg.JWKSRefreshInterval = interval
@@ -97,6 +111,13 @@ func WithJWKSRefreshInterval(interval time.Duration) Option {
 // WithExpectedIssuer sets the expected issuer ("iss" claim) for JWT validation.
 //
 // If not set, issuer validation is skipped.
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithSecret([]byte("my-secret")),
+//	    jwt.WithExpectedIssuer("https://auth.example.com"),
+//	)
 func WithExpectedIssuer(issuer string) Option {
 	return func(cfg *Config) {
 		cfg.ExpectedIssuer = issuer
@@ -107,6 +128,13 @@ func WithExpectedIssuer(issuer string) Option {
 //
 // The token's aud claim must contain at least one of these values.
 // If not set, audience validation is skipped.
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithSecret([]byte("my-secret")),
+//	    jwt.WithExpectedAudience("api-v1", "api-v2"),
+//	)
 func WithExpectedAudience(audience ...string) Option {
 	return func(cfg *Config) {
 		cfg.ExpectedAudience = audience
@@ -140,6 +168,13 @@ func WithAllowedAlgorithms(algorithms ...string) Option {
 // WithClockSkew sets the clock skew tolerance for time-based claim validation.
 //
 // Default: 1 minute
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithSecret([]byte("my-secret")),
+//	    jwt.WithClockSkew(30 * time.Second),
+//	)
 func WithClockSkew(skew time.Duration) Option {
 	return func(cfg *Config) {
 		cfg.ClockSkew = skew
@@ -165,6 +200,13 @@ func WithSkipPaths(paths ...string) Option {
 // and claims will be nil in the context.
 //
 // Default: false
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithSecret([]byte("my-secret")),
+//	    jwt.WithOptional(true),
+//	)
 func WithOptional(optional bool) Option {
 	return func(cfg *Config) {
 		cfg.Optional = optional

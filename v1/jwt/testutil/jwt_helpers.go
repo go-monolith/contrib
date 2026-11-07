@@ -295,7 +295,7 @@ type MockJWKSKey struct {
 func CreateMockJWKSServer(keys []*MockJWKSKey) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		jwks := map[string]interface{}{
-			"keys": buildJWKSKeys(keys),
+			"keys": BuildJWKSKeys(keys),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -303,8 +303,8 @@ func CreateMockJWKSServer(keys []*MockJWKSKey) *httptest.Server {
 	}))
 }
 
-// buildJWKSKeys converts MockJWKSKey slice to JWKS JSON format.
-func buildJWKSKeys(keys []*MockJWKSKey) []map[string]interface{} {
+// BuildJWKSKeys converts MockJWKSKey slice to JWKS JSON format.
+func BuildJWKSKeys(keys []*MockJWKSKey) []map[string]interface{} {
 	var jwkKeys []map[string]interface{}
 
 	for _, key := range keys {

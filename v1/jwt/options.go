@@ -108,6 +108,30 @@ func WithJWKSRefreshInterval(interval time.Duration) Option {
 	}
 }
 
+// WithJWKSMinRefreshInterval sets the minimum interval between two JWKS
+// refreshes triggered by token validation (unknown kid, stale cache, or
+// signature failure). It protects the JWKS endpoint, and the request handlers
+// that would block on it, from a flood of refreshes when the endpoint is slow
+// or when many tokens with bad signatures arrive.
+//
+// Background refresh (WithJWKSRefreshInterval) and the startup fetch are not
+// affected. Passing 0 keeps the default (unlike WithJWKSRefreshInterval, where
+// 0 disables); pass a negative value to disable rate limiting.
+//
+// Default: 30 seconds
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithJWKSEndpoint("https://auth.example.com/.well-known/jwks.json"),
+//	    jwt.WithJWKSMinRefreshInterval(time.Minute),
+//	)
+func WithJWKSMinRefreshInterval(interval time.Duration) Option {
+	return func(cfg *Config) {
+		cfg.JWKSMinRefreshInterval = interval
+	}
+}
+
 // WithExpectedIssuer sets the expected issuer ("iss" claim) for JWT validation.
 //
 // If not set, issuer validation is skipped.

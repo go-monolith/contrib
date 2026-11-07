@@ -91,6 +91,9 @@ func New(opts ...Option) (*Middleware, error) {
 		return nil, err
 	}
 
+	// Create logger instance
+	logger := slog.Default()
+
 	// Initialize key provider based on configuration
 	var keyProvider KeyProvider
 	var jwksCache *JWKSCache
@@ -102,6 +105,8 @@ func New(opts ...Option) (*Middleware, error) {
 			config.JWKSEndpoint,
 			jwksCache,
 			config.JWKSRequestTimeout,
+			WithProviderMinRefreshInterval(config.JWKSMinRefreshInterval),
+			WithProviderLogger(logger),
 		)
 	} else if config.SecretProvider != nil {
 		// Secret provider mode: create dynamic secret provider for multi-tenant
@@ -113,9 +118,6 @@ func New(opts ...Option) (*Middleware, error) {
 		// RSA/ECDSA mode: create static provider with public key
 		keyProvider = NewStaticKeyProvider(config.PublicKey)
 	}
-
-	// Create logger instance
-	logger := slog.Default()
 
 	// Create validator with the key provider and logger
 	validator := NewTokenValidator(keyProvider, config, logger)

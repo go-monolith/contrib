@@ -43,6 +43,13 @@ type Config struct {
 	// Default: 10 seconds
 	JWKSRequestTimeout time.Duration
 
+	// JWKSMinRefreshInterval is the minimum interval between two JWKS refreshes
+	// triggered by token validation (unknown kid, stale cache, signature failure).
+	// Background and startup refreshes are not rate-limited.
+	// Zero means use the default; set a negative value to disable rate limiting.
+	// Default: 30 seconds
+	JWKSMinRefreshInterval time.Duration
+
 	// Validation settings
 
 	// RequiredClaims is the list of claim names that must be present in the JWT.
@@ -126,7 +133,7 @@ func validateConfig(cfg *Config) error {
 			cfg.JWKSCacheTTL = 1 * time.Hour // Apply default
 		}
 		if cfg.JWKSRequestTimeout <= 0 {
-			cfg.JWKSRequestTimeout = 10 * time.Second // Apply default
+			cfg.JWKSRequestTimeout = defaultJWKSRequestTimeout // Apply default
 		}
 	}
 
@@ -144,7 +151,11 @@ func applyDefaults(cfg *Config) {
 	}
 
 	if cfg.JWKSRequestTimeout == 0 {
-		cfg.JWKSRequestTimeout = 10 * time.Second
+		cfg.JWKSRequestTimeout = defaultJWKSRequestTimeout
+	}
+
+	if cfg.JWKSMinRefreshInterval == 0 {
+		cfg.JWKSMinRefreshInterval = DefaultJWKSMinRefreshInterval
 	}
 
 	if cfg.ClockSkew == 0 {

@@ -8,6 +8,7 @@ A comprehensive JWT authentication middleware for the [Mono framework](https://g
 - **Standard Claims Validation**: Automatic validation of `exp`, `nbf`, `iat` claims with configurable clock skew
 - **Issuer & Audience Validation**: Optional validation of `iss` and `aud` claims
 - **JWKS Endpoint Support**: Dynamic key fetching from JWKS endpoints with intelligent caching and automatic key rotation handling
+- **Resilient to Slow Auth Servers**: Known keys are served from cache even after the TTL expires (stale-while-revalidate) and refreshed in the background, so handlers presenting a known key never wait on the JWKS endpoint. Refreshes triggered by unknown or invalid tokens are rate-limited
 - **Context Enhancement**: Validated claims automatically injected into `context.Context` for downstream handlers
 - **All Handler Types**: Wraps RequestReply, QueueGroup, and EventConsumer handlers automatically. Batch handlers (StreamConsumer, EventStreamConsumer) require manual validation using the exposed `Validator()` method for security
 - **Skip Paths**: Flexible configuration to exclude specific services from JWT validation
@@ -132,6 +133,7 @@ func main() {
         jwt.WithJWKSEndpoint("https://your-auth-server.com/.well-known/jwks.json"),
         jwt.WithJWKSCacheTTL(2 * time.Hour),
         jwt.WithJWKSRefreshInterval(90 * time.Minute),
+        jwt.WithJWKSMinRefreshInterval(time.Minute),
         jwt.WithExpectedIssuer("https://your-auth-server.com/"),
         jwt.WithExpectedAudience("your-api-audience"),
     )
@@ -150,6 +152,18 @@ func main() {
 }
 ```
 
+#### How JWKS caching behaves
+
+- **Startup**: `Start()` fetches the key set once and fails fast if the endpoint is unreachable.
+- **Background refresh**: every `JWKSRefreshInterval` the key set is fetched again. A failed refresh keeps the previous keys.
+- **Known key, cache fresh**: served from cache. No network call.
+- **Known key, cache older than `JWKSCacheTTL`**: served from cache immediately (stale-while-revalidate). One background refresh is started (subject to the rate limit below); the request never waits for it. Keys stay usable until a refresh succeeds and replaces the set.
+- **Unknown `kid`**: one synchronous refresh, then the lookup is retried. If the key is still missing the token is rejected with `ErrKeyNotFound`. If the refresh fails, or was rate-limited after a failed refresh, the token is rejected with `ErrJWKSFetchFailed` instead, because the key set is not known to be current.
+- **Signature failure with a known `kid`**: one synchronous refresh and one retry, to cover a re-issued key.
+- **Rate limit**: refreshes triggered by the three cases above (stale hit, unknown `kid`, signature failure) run at most once per `JWKSMinRefreshInterval` (default 30 s). Inside that window unknown or invalid tokens are rejected without a network call, and stale keys keep being served without starting another refresh. Startup and background refreshes are never rate-limited.
+
+Because stale keys are served until a refresh succeeds, a key that the auth server retires stays accepted on each instance until the next successful refresh (at most `JWKSRefreshInterval` plus `JWKSRequestTimeout` when the endpoint is healthy). Keep the refresh interval shorter than your key retirement grace period.
+
 ## Configuration Options
 
 ### Key Source Options (Mutually Exclusive)
@@ -164,8 +178,9 @@ func main() {
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `WithJWKSCacheTTL(duration)` | 1 hour | How long to cache JWKS keys |
+| `WithJWKSCacheTTL(duration)` | 1 hour | How long cached keys count as fresh. Older keys are still served while a background refresh runs |
 | `WithJWKSRefreshInterval(duration)` | 50 minutes | Background refresh interval (0 to disable) |
+| `WithJWKSMinRefreshInterval(duration)` | 30 seconds | Minimum interval between refreshes triggered by unknown or invalid tokens (negative to disable) |
 
 ### Validation Settings
 
@@ -500,7 +515,8 @@ The middleware returns descriptive errors for different validation failures:
 | `ErrInvalidIssuedAt` | Token's `iat` claim is in the future |
 | `ErrMissingRequiredClaim` | A required claim is missing |
 | `ErrUnsupportedAlgorithm` | JWT algorithm is not in allowed list |
-| `ErrJWKSFetchFailed` | Failed to fetch JWKS from endpoint |
+| `ErrJWKSFetchFailed` | Failed to fetch JWKS from endpoint (returned only when no cached key can answer the request, including while the rate limit blocks a retry after a failed fetch) |
+| `ErrKeyNotFound` | Token's `kid` is not in the JWKS key set, even after a successful refresh |
 | `ErrNoKeySourceConfigured` | No key source configured (Secret, PublicKey, or JWKS) |
 | `ErrMultipleKeySourcesConfigured` | Multiple key sources configured (mutually exclusive) |
 
@@ -540,8 +556,17 @@ The middleware returns descriptive errors for different validation failures:
 **Solutions:**
 1. Verify you're using the correct key (secret or public key)
 2. Check the token was signed with a compatible algorithm
-3. Ensure the key hasn't been rotated (for JWKS, the middleware auto-refreshes)
+3. Ensure the key hasn't been rotated (for JWKS, the middleware auto-refreshes, at most once per `JWKSMinRefreshInterval`)
 4. Verify the token hasn't been tampered with
+
+### Issue: "key not found"
+
+**Cause:** The token's `kid` header is not in the cached JWKS key set, and a refresh (if one was allowed by the rate limit) did not add it.
+
+**Solutions:**
+1. Check the token was issued by the configured auth server
+2. If keys were just rotated, wait for `JWKSMinRefreshInterval` (default 30 s) and retry
+3. Verify the JWKS endpoint publishes a `kid` for every signing key
 
 ### Issue: "unsupported algorithm"
 
@@ -554,7 +579,7 @@ The middleware returns descriptive errors for different validation failures:
 
 ### Issue: "failed to fetch JWKS"
 
-**Cause:** Cannot fetch keys from the JWKS endpoint.
+**Cause:** Cannot fetch keys from the JWKS endpoint and no cached key could answer the request (for example right after startup). Tokens signed with keys that are already cached keep validating while the endpoint is down; the failure is logged as `background JWKS refresh failed`.
 
 **Solutions:**
 1. Verify the JWKS endpoint URL is correct and accessible
@@ -590,7 +615,7 @@ The middleware returns descriptive errors for different validation failures:
 1. Ensure `WithJWKSCacheTTL()` is set to a reasonable value (default: 1 hour)
 2. Enable background refresh with `WithJWKSRefreshInterval()` (default: 50 minutes)
 3. Increase cache TTL for stable key sets
-4. Monitor JWKS endpoint response times
+4. Monitor JWKS endpoint response times. A slow endpoint only delays requests that carry an unknown `kid` or a bad signature, and only once per `WithJWKSMinRefreshInterval()`
 5. Use static keys (Secret or PublicKey) if key rotation isn't needed
 
 ### Issue: Panics with "jwt: claims not found in context"

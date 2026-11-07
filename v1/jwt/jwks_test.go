@@ -793,8 +793,8 @@ func TestJWKSKeyProvider_GetKey_KeyNotFoundAfterRefresh(t *testing.T) {
 		t.Error("Expected error when key not found after refresh")
 	}
 
-	if err != ErrJWKSFetchFailed {
-		t.Errorf("Expected ErrJWKSFetchFailed, got %v", err)
+	if err != ErrKeyNotFound {
+		t.Errorf("Expected ErrKeyNotFound, got %v", err)
 	}
 }
 

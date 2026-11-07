@@ -535,9 +535,11 @@ func TestJWKSMode_CompleteFlow(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create JWKS cache and provider
+	// Create JWKS cache and provider. This test rotates keys several times
+	// within seconds, so the refresh rate limit is disabled.
 	cache := jwt.NewJWKSCache(15 * time.Minute)
-	provider := jwt.NewJWKSKeyProvider(server.URL, cache, 10*time.Second)
+	provider := jwt.NewJWKSKeyProvider(server.URL, cache, 10*time.Second,
+		jwt.WithProviderMinRefreshInterval(0))
 
 	// Create validator
 	config := &jwt.Config{
@@ -710,9 +712,11 @@ func TestJWKSMode_KeyRotation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create JWKS provider and validator with short cache TTL for testing
+	// Create JWKS provider and validator with short cache TTL for testing.
+	// Keys rotate within milliseconds here, so the refresh rate limit is disabled.
 	cache := jwt.NewJWKSCache(200 * time.Millisecond)
-	provider := jwt.NewJWKSKeyProvider(server.URL, cache, 10*time.Second)
+	provider := jwt.NewJWKSKeyProvider(server.URL, cache, 10*time.Second,
+		jwt.WithProviderMinRefreshInterval(0))
 	config := &jwt.Config{
 		ClockSkew: 1 * time.Minute,
 	}
@@ -776,10 +780,22 @@ func TestJWKSMode_KeyRotation(t *testing.T) {
 	// Wait for cache to expire (TTL is 200ms)
 	time.Sleep(250 * time.Millisecond)
 
-	// Old token should fail after cache expires and fetches new key set
-	_, err = validator.Validate(ctx, token1)
-	if err == nil {
-		t.Error("Old token should fail after key retirement and cache expiration")
+	// The cache is now stale. key1 is still served (stale-while-revalidate)
+	// and the first stale hit starts a background refresh, which drops key1.
+	// Poll until the old token is rejected.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, err = validator.Validate(ctx, token1)
+		if err != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Old token should fail once the background refresh retires key1")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != jwt.ErrKeyNotFound {
+		t.Errorf("Expected ErrKeyNotFound for retired key, got: %v", err)
 	}
 
 	// New token should still work

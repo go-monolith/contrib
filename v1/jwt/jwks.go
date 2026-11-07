@@ -18,6 +18,10 @@ import (
 // rate-limited.
 const DefaultJWKSMinRefreshInterval = 30 * time.Second
 
+// defaultJWKSRequestTimeout is the HTTP timeout used for JWKS fetches when
+// none is configured.
+const defaultJWKSRequestTimeout = 10 * time.Second
+
 // JWKSCache caches JWKS keys with TTL-based expiration.
 //
 // Keys are kept in the cache after the TTL expires. A lookup then reports
@@ -104,6 +108,13 @@ func (c *JWKSCache) IsFresh() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return time.Since(c.lastFetch) <= c.ttl
+}
+
+// lastFetchTime returns when the key set was last marked fresh (zero if never).
+func (c *JWKSCache) lastFetchTime() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastFetch
 }
 
 // Set stores a key in the cache with the given kid.
@@ -193,7 +204,10 @@ type JWKSProviderOption func(*JWKSKeyProvider)
 
 // WithProviderMinRefreshInterval sets the minimum interval between two
 // refreshes triggered by token validation (unknown kid, stale cache, or
-// signature failure). Set to 0 to disable rate limiting.
+// signature failure). Zero or a negative value disables rate limiting.
+//
+// Note: the middleware-level WithJWKSMinRefreshInterval treats 0 as "use the
+// default" and only a negative value as "disable".
 //
 // Default: DefaultJWKSMinRefreshInterval (30 seconds)
 func WithProviderMinRefreshInterval(interval time.Duration) JWKSProviderOption {
@@ -222,7 +236,8 @@ func WithProviderLogger(logger *slog.Logger) JWKSProviderOption {
 //     the caller never waits for the network.
 //   - An unknown kid triggers a synchronous refresh, but at most once per
 //     minRefreshInterval. Within that window the key is reported as not
-//     found without touching the network.
+//     found without touching the network, or as a fetch failure when the
+//     last fetch failed and the key set is therefore not known to be current.
 //   - Explicit RefreshCache() calls (startup, background ticker) are never
 //     rate-limited.
 type JWKSKeyProvider struct {
@@ -234,8 +249,9 @@ type JWKSKeyProvider struct {
 	refreshMu sync.Mutex // serializes JWKS fetches
 
 	minRefreshInterval time.Duration
-	attemptMu          sync.Mutex // guards lastAttempt
+	attemptMu          sync.Mutex // guards lastAttempt and lastFailure
 	lastAttempt        time.Time  // last *triggered* refresh attempt (success or failure)
+	lastFailure        time.Time  // last failed fetch (triggered or explicit)
 
 	backgroundRefreshing atomic.Bool // single-flight flag for stale-triggered refreshes
 }
@@ -288,8 +304,9 @@ func NewJWKSKeyProvider(endpoint string, cache *JWKSCache, timeout time.Duration
 //
 // Returns:
 //   - The public key (crypto.PublicKey) if found
-//   - ErrJWKSFetchFailed if a refresh was attempted and failed
-//   - ErrKeyNotFound if the kid is not in the key set (or the refresh was rate-limited)
+//   - ErrJWKSFetchFailed if a refresh was attempted and failed, or was
+//     rate-limited while the last fetch had failed (key set not known to be current)
+//   - ErrKeyNotFound if the kid is not in the key set
 //
 // Thread-safe: Multiple goroutines can call this concurrently.
 //
@@ -310,18 +327,25 @@ func (p *JWKSKeyProvider) GetKey(ctx context.Context, kid string) (interface{}, 
 	}
 
 	// Unknown kid: refresh synchronously, subject to the rate limit.
-	if _, err := p.refreshIfAllowed(ctx); err != nil {
+	attempted, err := p.refreshIfAllowed(ctx)
+	if err != nil {
 		return nil, err
 	}
 
 	// Retry cache lookup after refresh. A stale hit is acceptable here: it
 	// means the refresh was rate-limited and the key was added concurrently.
 	key, found, _ = p.cache.Lookup(kid)
-	if !found {
-		return nil, ErrKeyNotFound
+	if found {
+		return key, nil
 	}
 
-	return key, nil
+	// The refresh was skipped by the rate limit and the last fetch failed, so
+	// the cached key set is not known to be current. Report the outage rather
+	// than claiming the kid does not exist.
+	if !attempted && p.fetchFailedSinceLastSuccess() {
+		return nil, ErrJWKSFetchFailed
+	}
+	return nil, ErrKeyNotFound
 }
 
 // RefreshCache fetches the JWKS and replaces the cache contents.
@@ -354,6 +378,7 @@ func (p *JWKSKeyProvider) RefreshCache(ctx context.Context) error {
 func (p *JWKSKeyProvider) refreshLocked(ctx context.Context) error {
 	keys, err := fetchJWKS(ctx, p.endpoint, p.httpClient)
 	if err != nil {
+		p.markFailure()
 		return err
 	}
 
@@ -367,6 +392,10 @@ func (p *JWKSKeyProvider) refreshLocked(ctx context.Context) error {
 // Returns attempted=false (and a nil error) when the refresh was skipped.
 // Concurrent callers wait on the refresh in flight; once it finishes they
 // observe the fresh lastAttempt and skip their own fetch.
+//
+// A caller whose context is already done when it acquires the lock gets
+// ErrJWKSFetchFailed without fetching, so a doomed request does not consume
+// the rate-limit budget.
 func (p *JWKSKeyProvider) refreshIfAllowed(ctx context.Context) (attempted bool, err error) {
 	p.refreshMu.Lock()
 	defer p.refreshMu.Unlock()
@@ -376,6 +405,10 @@ func (p *JWKSKeyProvider) refreshIfAllowed(ctx context.Context) (attempted bool,
 			"min_interval", p.minRefreshInterval,
 		)
 		return false, nil
+	}
+
+	if ctx.Err() != nil {
+		return false, ErrJWKSFetchFailed
 	}
 
 	// Only triggered refreshes count toward the rate limit, so a key
@@ -402,6 +435,22 @@ func (p *JWKSKeyProvider) markAttempt() {
 	p.attemptMu.Unlock()
 }
 
+// markFailure records the time of a failed fetch.
+func (p *JWKSKeyProvider) markFailure() {
+	p.attemptMu.Lock()
+	p.lastFailure = time.Now()
+	p.attemptMu.Unlock()
+}
+
+// fetchFailedSinceLastSuccess reports whether the most recent fetch failed,
+// meaning the cached key set is not known to match the endpoint.
+func (p *JWKSKeyProvider) fetchFailedSinceLastSuccess() bool {
+	p.attemptMu.Lock()
+	lastFailure := p.lastFailure
+	p.attemptMu.Unlock()
+	return lastFailure.After(p.cache.lastFetchTime())
+}
+
 // triggerBackgroundRefresh starts at most one background refresh at a time,
 // subject to the rate limit. It returns immediately.
 //
@@ -420,7 +469,7 @@ func (p *JWKSKeyProvider) triggerBackgroundRefresh() {
 
 		timeout := p.httpClient.Timeout
 		if timeout <= 0 {
-			timeout = 10 * time.Second
+			timeout = defaultJWKSRequestTimeout
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout+time.Second)
 		defer cancel()

@@ -157,10 +157,10 @@ func main() {
 - **Startup**: `Start()` fetches the key set once and fails fast if the endpoint is unreachable.
 - **Background refresh**: every `JWKSRefreshInterval` the key set is fetched again. A failed refresh keeps the previous keys.
 - **Known key, cache fresh**: served from cache. No network call.
-- **Known key, cache older than `JWKSCacheTTL`**: served from cache immediately (stale-while-revalidate). One background refresh is started; the request never waits for it. Keys stay usable until a refresh succeeds and replaces the set.
-- **Unknown `kid`**: one synchronous refresh, then the lookup is retried. If the key is still missing the token is rejected with `ErrKeyNotFound`.
+- **Known key, cache older than `JWKSCacheTTL`**: served from cache immediately (stale-while-revalidate). One background refresh is started (subject to the rate limit below); the request never waits for it. Keys stay usable until a refresh succeeds and replaces the set.
+- **Unknown `kid`**: one synchronous refresh, then the lookup is retried. If the key is still missing the token is rejected with `ErrKeyNotFound`. If the refresh fails, or was rate-limited after a failed refresh, the token is rejected with `ErrJWKSFetchFailed` instead, because the key set is not known to be current.
 - **Signature failure with a known `kid`**: one synchronous refresh and one retry, to cover a re-issued key.
-- **Rate limit**: refreshes triggered by the two cases above run at most once per `JWKSMinRefreshInterval` (default 30 s). Inside that window unknown or invalid tokens are rejected without a network call. Startup and background refreshes are never rate-limited.
+- **Rate limit**: refreshes triggered by the three cases above (stale hit, unknown `kid`, signature failure) run at most once per `JWKSMinRefreshInterval` (default 30 s). Inside that window unknown or invalid tokens are rejected without a network call, and stale keys keep being served without starting another refresh. Startup and background refreshes are never rate-limited.
 
 Because stale keys are served until a refresh succeeds, a key that the auth server retires stays accepted on each instance until the next successful refresh (at most `JWKSRefreshInterval` plus `JWKSRequestTimeout` when the endpoint is healthy). Keep the refresh interval shorter than your key retirement grace period.
 
@@ -515,8 +515,8 @@ The middleware returns descriptive errors for different validation failures:
 | `ErrInvalidIssuedAt` | Token's `iat` claim is in the future |
 | `ErrMissingRequiredClaim` | A required claim is missing |
 | `ErrUnsupportedAlgorithm` | JWT algorithm is not in allowed list |
-| `ErrJWKSFetchFailed` | Failed to fetch JWKS from endpoint (returned only when no cached key can answer the request) |
-| `ErrKeyNotFound` | Token's `kid` is not in the JWKS key set, even after a refresh |
+| `ErrJWKSFetchFailed` | Failed to fetch JWKS from endpoint (returned only when no cached key can answer the request, including while the rate limit blocks a retry after a failed fetch) |
+| `ErrKeyNotFound` | Token's `kid` is not in the JWKS key set, even after a successful refresh |
 | `ErrNoKeySourceConfigured` | No key source configured (Secret, PublicKey, or JWKS) |
 | `ErrMultipleKeySourcesConfigured` | Multiple key sources configured (mutually exclusive) |
 

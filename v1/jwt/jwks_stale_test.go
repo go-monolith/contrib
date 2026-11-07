@@ -3,10 +3,7 @@ package jwt
 import (
 	"context"
 	"crypto"
-	"crypto/rsa"
-	"encoding/base64"
 	"encoding/json"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -50,7 +47,7 @@ func newJWKSTestServer(keys ...*testutil.MockJWKSKey) *jwksTestServer {
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck // test server
-			"keys": buildTestJWKSKeys(keys),
+			"keys": testutil.BuildJWKSKeys(keys),
 		})
 	}))
 	return s
@@ -72,30 +69,6 @@ func (s *jwksTestServer) setFail(fail bool) {
 	s.mu.Lock()
 	s.fail = fail
 	s.mu.Unlock()
-}
-
-// buildTestJWKSKeys renders RSA keys as JWKS entries.
-func buildTestJWKSKeys(keys []*testutil.MockJWKSKey) []map[string]interface{} {
-	out := make([]map[string]interface{}, 0, len(keys))
-	for _, k := range keys {
-		pub, ok := k.PublicKey.(*rsa.PublicKey)
-		if !ok {
-			continue
-		}
-		out = append(out, rsaJWK(k.Kid, pub))
-	}
-	return out
-}
-
-func rsaJWK(kid string, pub *rsa.PublicKey) map[string]interface{} {
-	return map[string]interface{}{
-		"kty": "RSA",
-		"kid": kid,
-		"use": "sig",
-		"alg": "RS256",
-		"n":   base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
-		"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
-	}
 }
 
 // waitFor polls cond until it returns true or the timeout elapses.
@@ -428,6 +401,14 @@ func TestTokenValidator_JWKSErrorsAreDistinguishable(t *testing.T) {
 		if _, err := validator.Validate(context.Background(), token); err != ErrJWKSFetchFailed {
 			t.Fatalf("expected ErrJWKSFetchFailed, got %v", err)
 		}
+		// The second call is rate-limited. It is still an outage, not an
+		// unknown kid, and must not be reported as ErrKeyNotFound.
+		if _, err := validator.Validate(context.Background(), token); err != ErrJWKSFetchFailed {
+			t.Fatalf("expected ErrJWKSFetchFailed inside rate-limit window, got %v", err)
+		}
+		if n := down.requests.Load(); n != 1 {
+			t.Fatalf("expected 1 fetch, got %d", n)
+		}
 	})
 
 	t.Run("endpoint down with stale cache still validates", func(t *testing.T) {
@@ -451,6 +432,134 @@ func TestTokenValidator_JWKSErrorsAreDistinguishable(t *testing.T) {
 			t.Fatalf("unexpected claims: %v", parsed)
 		}
 	})
+}
+
+// TestJWKSKeyProvider_RateLimitedMissAfterFailedFetchReportsOutage verifies
+// that an unknown kid inside the rate-limit window is reported as a fetch
+// failure, not as a missing key, while the last fetch has failed.
+func TestJWKSKeyProvider_RateLimitedMissAfterFailedFetchReportsOutage(t *testing.T) {
+	_, pub := testutil.GenerateRSATestKeyPair()
+	srv := newJWKSTestServer(&testutil.MockJWKSKey{Kid: "key1", PublicKey: pub})
+	defer srv.Close()
+
+	cache := NewJWKSCache(time.Hour)
+	provider := NewJWKSKeyProvider(srv.URL, cache, 5*time.Second,
+		WithProviderMinRefreshInterval(time.Hour))
+
+	ctx := context.Background()
+	if err := provider.RefreshCache(ctx); err != nil {
+		t.Fatalf("initial refresh failed: %v", err)
+	}
+	srv.requests.Store(0)
+
+	// Endpoint goes down and a rotated kid arrives.
+	srv.setFail(true)
+	if _, err := provider.GetKey(ctx, "key2"); err != ErrJWKSFetchFailed {
+		t.Fatalf("expected ErrJWKSFetchFailed on failed fetch, got %v", err)
+	}
+
+	// Inside the window the refresh is skipped. The key set is not known to
+	// be current, so this is still an outage rather than an unknown kid.
+	if _, err := provider.GetKey(ctx, "key2"); err != ErrJWKSFetchFailed {
+		t.Fatalf("expected ErrJWKSFetchFailed inside rate-limit window, got %v", err)
+	}
+	if n := srv.requests.Load(); n != 1 {
+		t.Fatalf("expected 1 fetch, got %d", n)
+	}
+
+	// Known keys keep working throughout.
+	if _, err := provider.GetKey(ctx, "key1"); err != nil {
+		t.Fatalf("known key failed: %v", err)
+	}
+
+	// Once a fetch succeeds again (for example the background ticker), an
+	// unknown kid is a real miss.
+	srv.setFail(false)
+	if err := provider.RefreshCache(ctx); err != nil {
+		t.Fatalf("refresh failed: %v", err)
+	}
+	if _, err := provider.GetKey(ctx, "key2"); err != ErrKeyNotFound {
+		t.Fatalf("expected ErrKeyNotFound after successful refresh, got %v", err)
+	}
+}
+
+// TestJWKSKeyProvider_CancelledCallerDoesNotConsumeRateLimit verifies a caller
+// whose context is already done neither fetches nor burns the refresh budget.
+func TestJWKSKeyProvider_CancelledCallerDoesNotConsumeRateLimit(t *testing.T) {
+	_, pub := testutil.GenerateRSATestKeyPair()
+	srv := newJWKSTestServer(&testutil.MockJWKSKey{Kid: "key1", PublicKey: pub})
+	defer srv.Close()
+
+	cache := NewJWKSCache(time.Hour)
+	provider := NewJWKSKeyProvider(srv.URL, cache, 5*time.Second,
+		WithProviderMinRefreshInterval(time.Hour))
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := provider.GetKey(cancelled, "key1"); err != ErrJWKSFetchFailed {
+		t.Fatalf("expected ErrJWKSFetchFailed for cancelled context, got %v", err)
+	}
+	if n := srv.requests.Load(); n != 0 {
+		t.Fatalf("expected no fetch for a cancelled caller, got %d", n)
+	}
+
+	// The next live caller is not rate-limited by the aborted attempt.
+	if _, err := provider.GetKey(context.Background(), "key1"); err != nil {
+		t.Fatalf("expected key1 after live fetch, got %v", err)
+	}
+	if n := srv.requests.Load(); n != 1 {
+		t.Fatalf("expected 1 fetch, got %d", n)
+	}
+}
+
+// TestTokenValidator_ReparsesAfterWaitingOnInFlightRefresh verifies that a
+// token signed with a re-issued key (same kid) validates when the refresh that
+// loads the new key is already in flight while the token is being checked.
+func TestTokenValidator_ReparsesAfterWaitingOnInFlightRefresh(t *testing.T) {
+	_, oldPub := testutil.GenerateRSATestKeyPair()
+	newPriv, newPub := testutil.GenerateRSATestKeyPair()
+	srv := newJWKSTestServer(&testutil.MockJWKSKey{Kid: "key1", PublicKey: oldPub})
+	defer srv.Close()
+
+	cache := NewJWKSCache(time.Hour)
+	provider := NewJWKSKeyProvider(srv.URL, cache, 5*time.Second)
+	validator := NewTokenValidator(provider, &Config{ClockSkew: time.Minute}, nil)
+
+	ctx := context.Background()
+	if err := provider.RefreshCache(ctx); err != nil {
+		t.Fatalf("initial refresh failed: %v", err)
+	}
+	srv.requests.Store(0)
+
+	// key1 is re-issued. The endpoint is slow and the cache is stale, so the
+	// next known-key lookup starts a background refresh that holds the fetch
+	// lock for the duration of the request.
+	srv.setKeys(&testutil.MockJWKSKey{Kid: "key1", PublicKey: newPub})
+	srv.setDelay(300 * time.Millisecond)
+	expireCache(cache)
+	if _, err := provider.GetKey(ctx, "key1"); err != nil {
+		t.Fatalf("stale lookup failed: %v", err)
+	}
+	waitFor(t, time.Second, func() bool { return srv.requests.Load() == 1 },
+		"background refresh did not start")
+
+	// Verification with the stale key fails. The triggered refresh is
+	// rate-limited but waits on the in-flight one, which loads the new key;
+	// the validator must notice and re-parse instead of rejecting the token.
+	token := testutil.GenerateTokenWithKid(newPriv, "key1", map[string]interface{}{
+		"sub": "alice",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	parsed, err := validator.Validate(ctx, token)
+	if err != nil {
+		t.Fatalf("token signed with the re-issued key should validate: %v", err)
+	}
+	if parsed["sub"] != "alice" {
+		t.Fatalf("unexpected claims: %v", parsed)
+	}
+	if n := srv.requests.Load(); n != 1 {
+		t.Fatalf("expected the in-flight refresh to be reused, got %d fetches", n)
+	}
 }
 
 // TestNew_WiresMinRefreshInterval verifies the middleware option reaches the provider.

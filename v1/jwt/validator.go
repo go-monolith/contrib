@@ -81,6 +81,14 @@ func NewTokenValidator(keyProvider KeyProvider, config *Config, logger *slog.Log
 //	}
 //	userID := claims["sub"].(string)
 func (v *TokenValidator) Validate(ctx context.Context, tokenString string) (jwt.MapClaims, error) {
+	// In JWKS mode, remember when the key set was last fetched so a refresh
+	// that lands while this token is being checked is not missed.
+	jwksProvider, isJWKS := v.keyProvider.(*JWKSKeyProvider)
+	var fetchedBefore time.Time
+	if isJWKS {
+		fetchedBefore = jwksProvider.cache.lastFetchTime()
+	}
+
 	// Try to parse and validate the token
 	token, err := v.parseToken(ctx, tokenString)
 
@@ -89,8 +97,12 @@ func (v *TokenValidator) Validate(ctx context.Context, tokenString string) (jwt.
 	// key provider itself (unknown kid, fetch failure) already went through
 	// the provider's own refresh logic and are not retried here.
 	if err != nil {
-		if jwksProvider, ok := v.keyProvider.(*JWKSKeyProvider); ok && isSignatureError(err) {
-			if attempted, refreshErr := jwksProvider.refreshIfAllowed(ctx); attempted && refreshErr == nil {
+		if isJWKS && isSignatureError(err) {
+			// A rate-limited call still waits on any refresh in flight, so
+			// re-parse whenever the key set changed, not only when this call
+			// performed the fetch itself.
+			if _, refreshErr := jwksProvider.refreshIfAllowed(ctx); refreshErr == nil &&
+				jwksProvider.cache.lastFetchTime().After(fetchedBefore) {
 				token, err = v.parseToken(ctx, tokenString)
 			}
 		}
@@ -165,7 +177,7 @@ func (v *TokenValidator) mapParseError(err error, token *jwt.Token) error {
 // for HMAC, ErrRSAVerification, ErrECDSAVerification, ...) in
 // ErrTokenSignatureInvalid, so checking the wrapper covers every algorithm.
 func isSignatureError(err error) bool {
-	return errors.Is(err, jwt.ErrTokenSignatureInvalid) || errors.Is(err, jwt.ErrSignatureInvalid)
+	return errors.Is(err, jwt.ErrTokenSignatureInvalid)
 }
 
 // parseToken parses a JWT token and verifies its signature.

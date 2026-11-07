@@ -779,8 +779,10 @@ func TestTokenValidator_RefreshOnSignatureFailure(t *testing.T) {
 	}
 }
 
-// TestTokenValidator_RefreshOnSignatureFailure_StillFails tests when token is truly invalid.
-func TestTokenValidator_RefreshOnSignatureFailure_StillFails(t *testing.T) {
+// TestTokenValidator_MissingKid_ReturnsKeyNotFound tests that a token without a
+// kid header is rejected in JWKS mode. A bad signature with a known kid is
+// covered by TestTokenValidator_SignatureFailureRefreshIsRateLimited.
+func TestTokenValidator_MissingKid_ReturnsKeyNotFound(t *testing.T) {
 	_, rsaPublicKey := testutil.GenerateRSATestKeyPair()
 
 	// Create mock JWKS server
@@ -822,15 +824,15 @@ func TestTokenValidator_RefreshOnSignatureFailure_StillFails(t *testing.T) {
 	config := &Config{}
 	validator := NewTokenValidator(provider, config, nil)
 
-	// Create token with invalid signature. The token carries no kid, so in
-	// JWKS mode the key lookup fails before the signature is even checked.
+	// The token carries no kid, so in JWKS mode the key lookup fails before
+	// the signature is even checked.
 	tokenString := testutil.GenerateInvalidSignatureJWT()
 
-	// Validation should fail even after refresh
+	// Validation should fail even after the provider's own refresh
 	ctx := context.Background()
 	_, err := validator.Validate(ctx, tokenString)
 	if err == nil {
-		t.Error("Expected validation to fail for invalid signature")
+		t.Error("Expected validation to fail for a token without kid")
 	}
 
 	if err != ErrKeyNotFound {

@@ -115,7 +115,8 @@ func WithJWKSRefreshInterval(interval time.Duration) Option {
 // or when many tokens with bad signatures arrive.
 //
 // Background refresh (WithJWKSRefreshInterval) and the startup fetch are not
-// affected. Pass a negative value to disable rate limiting.
+// affected. Passing 0 keeps the default (unlike WithJWKSRefreshInterval, where
+// 0 disables); pass a negative value to disable rate limiting.
 //
 // Default: 30 seconds
 //

@@ -822,7 +822,8 @@ func TestTokenValidator_RefreshOnSignatureFailure_StillFails(t *testing.T) {
 	config := &Config{}
 	validator := NewTokenValidator(provider, config, nil)
 
-	// Create token with invalid signature
+	// Create token with invalid signature. The token carries no kid, so in
+	// JWKS mode the key lookup fails before the signature is even checked.
 	tokenString := testutil.GenerateInvalidSignatureJWT()
 
 	// Validation should fail even after refresh
@@ -832,8 +833,8 @@ func TestTokenValidator_RefreshOnSignatureFailure_StillFails(t *testing.T) {
 		t.Error("Expected validation to fail for invalid signature")
 	}
 
-	if err != ErrInvalidSignature {
-		t.Errorf("Expected ErrInvalidSignature, got: %v", err)
+	if err != ErrKeyNotFound {
+		t.Errorf("Expected ErrKeyNotFound, got: %v", err)
 	}
 }
 

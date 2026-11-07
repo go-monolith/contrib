@@ -3,21 +3,34 @@ package jwt
 import (
 	"context"
 	"crypto"
+	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
+// DefaultJWKSMinRefreshInterval is the default minimum interval between two
+// JWKS refreshes that are triggered by token validation (unknown kid, stale
+// cache, or signature failure). Background and explicit refreshes are not
+// rate-limited.
+const DefaultJWKSMinRefreshInterval = 30 * time.Second
+
 // JWKSCache caches JWKS keys with TTL-based expiration.
+//
+// Keys are kept in the cache after the TTL expires. A lookup then reports
+// the key as stale so that the caller can serve it while a refresh runs in
+// the background (stale-while-revalidate). Keys only disappear from the
+// cache when a refresh replaces the key set or Clear() is called.
 //
 // Thread-safe for concurrent access.
 type JWKSCache struct {
-	keys      sync.Map  // kid -> crypto.PublicKey
+	keys      map[string]interface{} // kid -> crypto.PublicKey
 	lastFetch time.Time
 	ttl       time.Duration
-	mu        sync.RWMutex // for lastFetch access
+	mu        sync.RWMutex // guards keys and lastFetch
 }
 
 // NewJWKSCache creates a new JWKS cache with the given TTL.
@@ -27,30 +40,23 @@ type JWKSCache struct {
 //
 // Parameters:
 //   - ttl: Time-to-live duration for the cache. After this duration,
-//     Get() will return false to trigger a cache refresh.
+//     Get() will return false and Lookup() reports the keys as stale.
 //
 // Example:
 //
 //	cache := NewJWKSCache(15 * time.Minute)
 func NewJWKSCache(ttl time.Duration) *JWKSCache {
 	return &JWKSCache{
-		ttl: ttl,
+		keys: make(map[string]interface{}),
+		ttl:  ttl,
 		// lastFetch is zero time initially, so first Get() will trigger a fetch
 	}
 }
 
-// Get retrieves a key from the cache by kid.
+// Get retrieves a key from the cache by kid, but only while the cache is fresh.
 //
-// This method checks if the cache is stale before returning the key.
-// If the cache is stale (time.Since(lastFetch) > ttl), it returns (nil, false)
-// to signal that a refresh is needed.
-//
-// Parameters:
-//   - kid: The key ID to look up
-//
-// Returns:
-//   - The public key (crypto.PublicKey) if found and cache is fresh
-//   - A boolean indicating if the key was found and cache is fresh
+// If the cache is stale (time.Since(lastFetch) > ttl) or the key is unknown,
+// it returns (nil, false). Use Lookup() to read stale keys.
 //
 // Thread-safe: Safe for concurrent access.
 //
@@ -63,33 +69,48 @@ func NewJWKSCache(ttl time.Duration) *JWKSCache {
 //	    key, ok = cache.Get("key-id-123")
 //	}
 func (c *JWKSCache) Get(kid string) (interface{}, bool) {
-	// Check if cache is stale
+	key, found, fresh := c.Lookup(kid)
+	if !found || !fresh {
+		return nil, false
+	}
+	return key, true
+}
+
+// Lookup retrieves a key from the cache by kid regardless of freshness.
+//
+// Returns:
+//   - key: the cached key, or nil when not found
+//   - found: whether the kid is in the cache
+//   - fresh: whether the cache is within its TTL
+//
+// A found but not fresh key may still be served while a refresh runs in the
+// background. Both flags are read under the same lock, so they are consistent
+// with each other.
+//
+// Thread-safe: Safe for concurrent access.
+func (c *JWKSCache) Lookup(kid string) (key interface{}, found bool, fresh bool) {
 	c.mu.RLock()
-	lastFetch := c.lastFetch
-	c.mu.RUnlock()
+	defer c.mu.RUnlock()
 
-	// If cache is stale, return false to trigger refresh
-	if time.Since(lastFetch) > c.ttl {
-		return nil, false
-	}
+	key, found = c.keys[kid]
+	fresh = time.Since(c.lastFetch) <= c.ttl
+	return key, found, fresh
+}
 
-	// Load key from sync.Map
-	value, ok := c.keys.Load(kid)
-	if !ok {
-		return nil, false
-	}
-
-	return value, true
+// IsFresh reports whether the cache is within its TTL.
+//
+// Thread-safe: Safe for concurrent access.
+func (c *JWKSCache) IsFresh() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return time.Since(c.lastFetch) <= c.ttl
 }
 
 // Set stores a key in the cache with the given kid.
 //
 // This method does NOT update the lastFetch timestamp. Use UpdateLastFetch()
-// after setting all keys from a JWKS fetch operation.
-//
-// Parameters:
-//   - kid: The key ID
-//   - key: The public key (crypto.PublicKey)
+// after setting all keys from a JWKS fetch operation. Prefer Replace() to
+// swap in a whole key set atomically.
 //
 // Thread-safe: Safe for concurrent access.
 //
@@ -99,7 +120,36 @@ func (c *JWKSCache) Get(kid string) (interface{}, bool) {
 //	cache.Set("key-id-456", ecdsaPublicKey)
 //	cache.UpdateLastFetch() // Mark cache as fresh
 func (c *JWKSCache) Set(kid string, key interface{}) {
-	c.keys.Store(kid, key)
+	c.mu.Lock()
+	c.keys[kid] = key
+	c.mu.Unlock()
+}
+
+// Replace atomically swaps the whole key set and marks the cache as fresh.
+//
+// Readers never observe an empty cache during a refresh, unlike a
+// Clear()/Set()/UpdateLastFetch() sequence. Retired keys that are absent
+// from the new set are dropped.
+//
+// Thread-safe: Safe for concurrent access.
+//
+// Example:
+//
+//	keys, err := fetchJWKS(ctx, endpoint, httpClient)
+//	if err != nil {
+//	    return err
+//	}
+//	cache.Replace(keys)
+func (c *JWKSCache) Replace(keys map[string]crypto.PublicKey) {
+	newKeys := make(map[string]interface{}, len(keys))
+	for kid, key := range keys {
+		newKeys[kid] = key
+	}
+
+	c.mu.Lock()
+	c.keys = newKeys
+	c.lastFetch = time.Now()
+	c.mu.Unlock()
 }
 
 // UpdateLastFetch updates the last fetch timestamp to the current time.
@@ -111,18 +161,9 @@ func (c *JWKSCache) Set(kid string, key interface{}) {
 //
 // Example:
 //
-//	// Fetch keys from JWKS endpoint
-//	keys, err := fetchJWKS(ctx, endpoint, httpClient)
-//	if err != nil {
-//	    return err
-//	}
-//
-//	// Update cache with all keys
 //	for kid, key := range keys {
 //	    cache.Set(kid, key)
 //	}
-//
-//	// Mark cache as fresh
 //	cache.UpdateLastFetch()
 func (c *JWKSCache) UpdateLastFetch() {
 	c.mu.Lock()
@@ -131,9 +172,6 @@ func (c *JWKSCache) UpdateLastFetch() {
 }
 
 // Clear removes all cached keys.
-//
-// This method is typically called before refreshing the cache to ensure
-// that retired keys are removed and don't persist in the cache.
 //
 // Thread-safe: Safe for concurrent access.
 //
@@ -145,20 +183,61 @@ func (c *JWKSCache) UpdateLastFetch() {
 //	}
 //	cache.UpdateLastFetch()
 func (c *JWKSCache) Clear() {
-	// Delete all entries from the sync.Map
-	// We iterate and delete each key to avoid race conditions
-	c.keys.Range(func(key, value interface{}) bool {
-		c.keys.Delete(key)
-		return true // continue iteration
-	})
+	c.mu.Lock()
+	c.keys = make(map[string]interface{})
+	c.mu.Unlock()
+}
+
+// JWKSProviderOption configures a JWKSKeyProvider.
+type JWKSProviderOption func(*JWKSKeyProvider)
+
+// WithProviderMinRefreshInterval sets the minimum interval between two
+// refreshes triggered by token validation (unknown kid, stale cache, or
+// signature failure). Set to 0 to disable rate limiting.
+//
+// Default: DefaultJWKSMinRefreshInterval (30 seconds)
+func WithProviderMinRefreshInterval(interval time.Duration) JWKSProviderOption {
+	return func(p *JWKSKeyProvider) {
+		p.minRefreshInterval = interval
+	}
+}
+
+// WithProviderLogger sets the logger used to report background refresh
+// failures and skipped refreshes.
+//
+// Default: slog.Default()
+func WithProviderLogger(logger *slog.Logger) JWKSProviderOption {
+	return func(p *JWKSKeyProvider) {
+		if logger != nil {
+			p.logger = logger
+		}
+	}
 }
 
 // JWKSKeyProvider provides keys by fetching from a JWKS endpoint.
+//
+// Behaviour under load or when the JWKS endpoint is slow:
+//   - A known key whose cache entry is past its TTL is served immediately
+//     (stale-while-revalidate). A single background refresh is started;
+//     the caller never waits for the network.
+//   - An unknown kid triggers a synchronous refresh, but at most once per
+//     minRefreshInterval. Within that window the key is reported as not
+//     found without touching the network.
+//   - Explicit RefreshCache() calls (startup, background ticker) are never
+//     rate-limited.
 type JWKSKeyProvider struct {
 	endpoint   string
 	cache      *JWKSCache
 	httpClient *http.Client
-	refreshMu  sync.Mutex // prevents concurrent JWKS refreshes
+	logger     *slog.Logger
+
+	refreshMu sync.Mutex // serializes JWKS fetches
+
+	minRefreshInterval time.Duration
+	attemptMu          sync.Mutex // guards lastAttempt
+	lastAttempt        time.Time  // last *triggered* refresh attempt (success or failure)
+
+	backgroundRefreshing atomic.Bool // single-flight flag for stale-triggered refreshes
 }
 
 // NewJWKSKeyProvider creates a new JWKS key provider.
@@ -170,31 +249,38 @@ type JWKSKeyProvider struct {
 //   - endpoint: The JWKS endpoint URL (e.g., "https://auth.example.com/.well-known/jwks.json")
 //   - cache: The cache to use for storing fetched keys
 //   - timeout: HTTP request timeout for JWKS fetches
+//   - opts: Optional provider settings (rate limit, logger)
 //
 // Returns a new JWKSKeyProvider instance.
 //
 // Example:
 //
 //	cache := NewJWKSCache(15 * time.Minute)
-//	provider := NewJWKSKeyProvider("https://auth.example.com/.well-known/jwks.json", cache, 10*time.Second)
-func NewJWKSKeyProvider(endpoint string, cache *JWKSCache, timeout time.Duration) *JWKSKeyProvider {
-	return &JWKSKeyProvider{
+//	provider := NewJWKSKeyProvider("https://auth.example.com/.well-known/jwks.json", cache, 10*time.Second,
+//	    WithProviderMinRefreshInterval(time.Minute),
+//	)
+func NewJWKSKeyProvider(endpoint string, cache *JWKSCache, timeout time.Duration, opts ...JWKSProviderOption) *JWKSKeyProvider {
+	p := &JWKSKeyProvider{
 		endpoint: endpoint,
 		cache:    cache,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
+		logger:             slog.Default(),
+		minRefreshInterval: DefaultJWKSMinRefreshInterval,
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 // GetKey retrieves a key by kid, fetching from JWKS if not cached.
 //
 // This method implements the KeyProvider interface. It follows this flow:
-//  1. Try to get the key from cache
-//  2. If cache hit, return the key
-//  3. If cache miss, refresh the cache from JWKS endpoint
-//  4. Retry cache lookup after refresh
-//  5. Return error if key still not found
+//  1. Known key, cache fresh: return it.
+//  2. Known key, cache stale: return it and start one background refresh.
+//  3. Unknown key: run a rate-limited synchronous refresh, then look again.
 //
 // Parameters:
 //   - ctx: Context for request cancellation
@@ -202,10 +288,10 @@ func NewJWKSKeyProvider(endpoint string, cache *JWKSCache, timeout time.Duration
 //
 // Returns:
 //   - The public key (crypto.PublicKey) if found
-//   - An error if the key cannot be retrieved
+//   - ErrJWKSFetchFailed if a refresh was attempted and failed
+//   - ErrKeyNotFound if the kid is not in the key set (or the refresh was rate-limited)
 //
 // Thread-safe: Multiple goroutines can call this concurrently.
-// Concurrent refresh attempts are deduplicated using refreshMu.
 //
 // Example:
 //
@@ -214,40 +300,43 @@ func NewJWKSKeyProvider(endpoint string, cache *JWKSCache, timeout time.Duration
 //	    return fmt.Errorf("failed to get key: %w", err)
 //	}
 func (p *JWKSKeyProvider) GetKey(ctx context.Context, kid string) (interface{}, error) {
-	// Try to get from cache first
-	key, ok := p.cache.Get(kid)
-	if ok {
+	key, found, fresh := p.cache.Lookup(kid)
+	if found {
+		if !fresh {
+			// Serve the stale key and revalidate in the background.
+			p.triggerBackgroundRefresh()
+		}
 		return key, nil
 	}
 
-	// Cache miss - refresh cache
-	if err := p.RefreshCache(ctx); err != nil {
+	// Unknown kid: refresh synchronously, subject to the rate limit.
+	if _, err := p.refreshIfAllowed(ctx); err != nil {
 		return nil, err
 	}
 
-	// Retry cache lookup after refresh
-	key, ok = p.cache.Get(kid)
-	if !ok {
-		// Key still not found after refresh
-		return nil, ErrJWKSFetchFailed
+	// Retry cache lookup after refresh. A stale hit is acceptable here: it
+	// means the refresh was rate-limited and the key was added concurrently.
+	key, found, _ = p.cache.Lookup(kid)
+	if !found {
+		return nil, ErrKeyNotFound
 	}
 
 	return key, nil
 }
 
-// RefreshCache fetches the JWKS and updates the cache.
+// RefreshCache fetches the JWKS and replaces the cache contents.
 //
-// This method fetches keys from the JWKS endpoint and updates the cache.
-// It uses a mutex to prevent concurrent refresh attempts, ensuring only
-// one refresh happens at a time.
+// This call is never rate-limited. It is used at startup and by the
+// background ticker. Concurrent callers are serialized; the cache is swapped
+// atomically so readers never see an empty key set.
 //
 // Parameters:
 //   - ctx: Context for request cancellation
 //
-// Returns an error if the JWKS fetch fails.
+// Returns an error if the JWKS fetch fails. The previous keys stay in the
+// cache on failure.
 //
 // Thread-safe: Multiple goroutines calling this will be serialized.
-// Only the first caller will actually fetch; others will wait.
 //
 // Example:
 //
@@ -255,29 +344,100 @@ func (p *JWKSKeyProvider) GetKey(ctx context.Context, kid string) (interface{}, 
 //	    log.Printf("Failed to refresh JWKS cache: %v", err)
 //	}
 func (p *JWKSKeyProvider) RefreshCache(ctx context.Context) error {
-	// Use mutex to prevent concurrent refreshes
 	p.refreshMu.Lock()
 	defer p.refreshMu.Unlock()
 
-	// Fetch JWKS from endpoint
+	return p.refreshLocked(ctx)
+}
+
+// refreshLocked performs the fetch and cache swap. Caller must hold refreshMu.
+func (p *JWKSKeyProvider) refreshLocked(ctx context.Context) error {
 	keys, err := fetchJWKS(ctx, p.endpoint, p.httpClient)
 	if err != nil {
 		return err
 	}
 
-	// Clear old keys before adding new ones
-	// This ensures retired keys are removed from the cache
-	p.cache.Clear()
+	p.cache.Replace(keys)
+	return nil
+}
 
-	// Update cache with all fetched keys
-	for kid, key := range keys {
-		p.cache.Set(kid, key)
+// refreshIfAllowed runs a synchronous refresh unless one was attempted less
+// than minRefreshInterval ago.
+//
+// Returns attempted=false (and a nil error) when the refresh was skipped.
+// Concurrent callers wait on the refresh in flight; once it finishes they
+// observe the fresh lastAttempt and skip their own fetch.
+func (p *JWKSKeyProvider) refreshIfAllowed(ctx context.Context) (attempted bool, err error) {
+	p.refreshMu.Lock()
+	defer p.refreshMu.Unlock()
+
+	if !p.refreshAllowed() {
+		p.logger.Debug("JWKS refresh skipped: rate limited",
+			"min_interval", p.minRefreshInterval,
+		)
+		return false, nil
 	}
 
-	// Mark cache as fresh
-	p.cache.UpdateLastFetch()
+	// Only triggered refreshes count toward the rate limit, so a key
+	// rotation right after a background refresh is still picked up at once.
+	p.markAttempt()
 
-	return nil
+	return true, p.refreshLocked(ctx)
+}
+
+// refreshAllowed reports whether enough time has passed since the last attempt.
+func (p *JWKSKeyProvider) refreshAllowed() bool {
+	if p.minRefreshInterval <= 0 {
+		return true
+	}
+	p.attemptMu.Lock()
+	defer p.attemptMu.Unlock()
+	return time.Since(p.lastAttempt) >= p.minRefreshInterval
+}
+
+// markAttempt records the time of a refresh attempt.
+func (p *JWKSKeyProvider) markAttempt() {
+	p.attemptMu.Lock()
+	p.lastAttempt = time.Now()
+	p.attemptMu.Unlock()
+}
+
+// triggerBackgroundRefresh starts at most one background refresh at a time,
+// subject to the rate limit. It returns immediately.
+//
+// The refresh runs with its own context bounded by the HTTP client timeout,
+// so it does not depend on the caller's context and cannot leak.
+func (p *JWKSKeyProvider) triggerBackgroundRefresh() {
+	if !p.refreshAllowed() {
+		return
+	}
+	if !p.backgroundRefreshing.CompareAndSwap(false, true) {
+		return
+	}
+
+	go func() {
+		defer p.backgroundRefreshing.Store(false)
+
+		timeout := p.httpClient.Timeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout+time.Second)
+		defer cancel()
+
+		attempted, err := p.refreshIfAllowed(ctx)
+		if !attempted {
+			return
+		}
+		if err != nil {
+			p.logger.Warn("background JWKS refresh failed; serving stale keys",
+				"endpoint", p.endpoint,
+				"error", err,
+			)
+			return
+		}
+		p.logger.Debug("background JWKS refresh after stale hit succeeded")
+	}()
 }
 
 // fetchJWKS fetches the JWKS document from the endpoint and parses it.

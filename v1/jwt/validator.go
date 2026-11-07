@@ -60,8 +60,14 @@ func NewTokenValidator(keyProvider KeyProvider, config *Config, logger *slog.Log
 //
 // Special behavior for JWKS mode:
 //   If signature validation fails and using JWKSKeyProvider, the validator
-//   will automatically refresh the JWKS cache and retry once. This handles
-//   the case where keys have been rotated.
+//   refreshes the JWKS cache and retries once. This handles the case where
+//   keys have been rotated. The refresh is rate-limited (see
+//   WithJWKSMinRefreshInterval), so a flood of bad tokens cannot hammer the
+//   JWKS endpoint.
+//
+// Returned errors distinguish key-provider failures from bad tokens:
+//   ErrKeyNotFound when the kid is unknown, ErrJWKSFetchFailed when the JWKS
+//   endpoint could not be reached, ErrInvalidSignature for a bad signature.
 //
 // Returns the claims if validation succeeds, or an error if validation fails.
 //
@@ -78,13 +84,14 @@ func (v *TokenValidator) Validate(ctx context.Context, tokenString string) (jwt.
 	// Try to parse and validate the token
 	token, err := v.parseToken(ctx, tokenString)
 
-	// Check for parsing errors and retry with JWKS refresh if applicable
+	// On a signature failure in JWKS mode the key for this kid may have been
+	// re-issued. Refresh once (rate-limited) and retry. Errors raised by the
+	// key provider itself (unknown kid, fetch failure) already went through
+	// the provider's own refresh logic and are not retried here.
 	if err != nil {
-		if jwksProvider, ok := v.keyProvider.(*JWKSKeyProvider); ok {
-			if errors.Is(err, jwt.ErrSignatureInvalid) || (token != nil && !token.Valid) {
-				if refreshErr := jwksProvider.RefreshCache(ctx); refreshErr == nil {
-					token, err = v.parseToken(ctx, tokenString)
-				}
+		if jwksProvider, ok := v.keyProvider.(*JWKSKeyProvider); ok && isSignatureError(err) {
+			if attempted, refreshErr := jwksProvider.refreshIfAllowed(ctx); attempted && refreshErr == nil {
+				token, err = v.parseToken(ctx, tokenString)
 			}
 		}
 		if err != nil {
@@ -131,8 +138,14 @@ func (v *TokenValidator) mapParseError(err error, token *jwt.Token) error {
 	if errors.Is(err, ErrUnsupportedAlgorithm) {
 		return ErrUnsupportedAlgorithm
 	}
-	if errors.Is(err, jwt.ErrSignatureInvalid) {
+	if isSignatureError(err) {
 		return ErrInvalidSignature
+	}
+	if errors.Is(err, ErrKeyNotFound) {
+		return ErrKeyNotFound
+	}
+	if errors.Is(err, ErrJWKSFetchFailed) {
+		return ErrJWKSFetchFailed
 	}
 	if errors.Is(err, jwt.ErrTokenExpired) {
 		return ErrTokenExpired
@@ -144,6 +157,15 @@ func (v *TokenValidator) mapParseError(err error, token *jwt.Token) error {
 		return ErrInvalidSignature
 	}
 	return ErrInvalidToken
+}
+
+// isSignatureError reports whether err is a signature verification failure.
+//
+// golang-jwt wraps the per-algorithm verification error (ErrSignatureInvalid
+// for HMAC, ErrRSAVerification, ErrECDSAVerification, ...) in
+// ErrTokenSignatureInvalid, so checking the wrapper covers every algorithm.
+func isSignatureError(err error) bool {
+	return errors.Is(err, jwt.ErrTokenSignatureInvalid) || errors.Is(err, jwt.ErrSignatureInvalid)
 }
 
 // parseToken parses a JWT token and verifies its signature.

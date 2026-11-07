@@ -48,9 +48,13 @@ jobs:
         run: cd v1/jwt && go mod download
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.7.2
+          # Build the linter with the runner's Go toolchain. A prebuilt binary
+          # panics with "file requires newer Go version" once setup-go's
+          # 'stable' moves past the Go version the binary was built with.
+          install-mode: goinstall
+          version: v2.15.0
           args: --timeout=5m
           working-directory: v1/jwt
 

@@ -91,8 +91,11 @@ func New(opts ...Option) (*Middleware, error) {
 		return nil, err
 	}
 
-	// Create logger instance
-	logger := slog.Default()
+	// Use the logger from WithLogger, or the current default logger
+	logger := config.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 
 	// Initialize key provider based on configuration
 	var keyProvider KeyProvider
@@ -145,7 +148,8 @@ func (m *Middleware) Name() string {
 	return "jwt"
 }
 
-// Logger returns the logger instance (set by Mono framework).
+// Logger returns the logger the middleware writes to: the one passed with
+// WithLogger, or the slog.Default() captured when New was called.
 //
 // Example:
 //

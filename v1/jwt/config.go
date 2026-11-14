@@ -3,6 +3,7 @@ package jwt
 import (
 	"crypto"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"time"
 )
@@ -91,6 +92,11 @@ type Config struct {
 	// Optional allows requests without tokens to proceed (claims will be nil in context).
 	// Default: false
 	Optional bool
+
+	// Logger is the logger used by the middleware, the token validator, and
+	// the JWKS key provider.
+	// Default: slog.Default() at the time New is called
+	Logger *slog.Logger
 }
 
 // validateConfig validates the configuration and returns an error if invalid.

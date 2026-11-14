@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"crypto"
+	"log/slog"
 	"time"
 )
 
@@ -215,6 +216,34 @@ func WithClockSkew(skew time.Duration) Option {
 func WithSkipPaths(paths ...string) Option {
 	return func(cfg *Config) {
 		cfg.SkipPaths = paths
+	}
+}
+
+// WithLogger sets the logger used by the middleware, its token validator, and
+// the JWKS key provider (startup lines, JWKS refresh failures, validation
+// failures).
+//
+// Without this option New captures slog.Default() at the time it is called, so
+// a default logger installed later with slog.SetDefault is not picked up. Pass
+// the logger explicitly when the middleware is built before the application's
+// logging is fully set up (for example before an OpenTelemetry log handler is
+// installed).
+//
+// A nil logger is ignored and the default is kept.
+//
+// Default: slog.Default() at the time New is called
+//
+// Example:
+//
+//	jwt.New(
+//	    jwt.WithJWKSEndpoint("https://auth.example.com/.well-known/jwks.json"),
+//	    jwt.WithLogger(logger),
+//	)
+func WithLogger(logger *slog.Logger) Option {
+	return func(cfg *Config) {
+		if logger != nil {
+			cfg.Logger = logger
+		}
 	}
 }
 

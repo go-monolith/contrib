@@ -198,6 +198,16 @@ Because stale keys are served until a refresh succeeds, a key that the auth serv
 |--------|---------|-------------|
 | `WithSkipPaths(...string)` | [] | Service paths to skip validation (see Skip Paths section) |
 | `WithOptional(bool)` | false | Allow requests without tokens to proceed |
+| `WithLogger(*slog.Logger)` | `slog.Default()` when `New` is called | Logger for the middleware, token validator, and JWKS key provider |
+
+`New` captures `slog.Default()` once. If your application replaces the default logger after building the middleware (for example to add an OpenTelemetry log handler), the middleware keeps writing to the old one, and lines such as `background JWKS refresh failed; serving stale keys` never reach the new handler. Pass the logger explicitly in that case:
+
+```go
+jwtMiddleware, err := jwt.New(
+    jwt.WithJWKSEndpoint("https://auth.example.com/.well-known/jwks.json"),
+    jwt.WithLogger(logger), // e.g. otelMw.Logger() or your stdout + OTel tee
+)
+```
 
 ## Usage Examples
 

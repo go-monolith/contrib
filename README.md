@@ -14,7 +14,7 @@
 
 This repository contains community-contributed middleware modules, plugins, and integrations for the Mono Framework. Each package is designed to extend the functionality of Mono applications with minimal configuration.
 
-> **Go version support:** We support the latest two versions of Go. Visit [https://go.dev/doc/devel/release](https://go.dev/doc/devel/release) for more information.
+> **Go version support:** each module supports the Go version in the `go` directive of its `go.mod` (currently Go 1.26) and newer. CI tests that minimum and the latest stable release. Visit [https://go.dev/doc/devel/release](https://go.dev/doc/devel/release) for more information.
 
 ## Middleware Implementations
 
@@ -87,7 +87,27 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 3. Add comprehensive tests
 4. Create a README.md with documentation
 5. Update this README.md to list your middleware
-6. Submit a pull request
+6. Add a `.github/workflows/go-test-<name>.yaml`, copied from `go-test-jwt.yaml`, and add the directory to `.github/dependabot.yml`
+7. Submit a pull request
+
+### Releases
+
+Each module under `v1/` is released on its own, with a tag `v1/<name>/vX.Y.Z`. Go downloads a version from that tag; a GitHub release adds the notes.
+
+1. Give the pull request a conventional title: `feat(jwt): ...`, `fix(otel): ...`, `chore(deps): ...`, `docs: ...`, or `feat!: ...` for a breaking change. An issue reference may come first (`#12 fix(jwt): ...`).
+2. The PR labeler workflow labels the pull request from its title. Labels set by hand are kept. The label decides two things:
+   - **Section of the release notes:**
+     - `❗ BreakingChange`: Breaking Changes
+     - `✏️ Feature`: New
+     - `☢️ Bug`: Fixes
+     - `🤖 Dependencies` and `🧹 Updates`: Updates
+     - `📒 Documentation`: Documentation
+   - **Next version:**
+     - `❗ BreakingChange` or `major`: major
+     - `✏️ Feature` or `minor`: minor
+     - anything else: patch
+3. Every merge to `main` updates a draft release for each module the merge changed (`go-release.yaml`).
+4. To release, review the draft on the [releases page](https://github.com/go-monolith/contrib/releases): adjust the version and notes if needed, then publish it. Publishing creates the tag on `main`. GitHub marks only one release of the repository as latest, which does not affect `go get`.
 
 ## Directory Structure
 

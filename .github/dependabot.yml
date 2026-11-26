@@ -1,0 +1,68 @@
+# Dependabot version and security updates.
+#
+# Without this file only security updates arrived, as one group across all
+# module directories, and a group could move part of a family of modules that
+# must move together (#14 and #16 bumped go.opentelemetry.io/otel/log to
+# v1.47.0 but left contrib/bridges/otelslog and the stdout exporters on
+# versions that no longer build against it).
+#
+# Labels and commit prefix follow .github/workflows/pr-labeler.yml and
+# .github/release-drafter-template.yml, so dependency updates are listed under
+# "Updates" in the release notes and resolve to a patch release.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - /v1/jwt
+      - /v1/otel
+      - /examples/v1/jwt
+      - /examples/v1/otel
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - '🤖 Dependencies'
+      - 'go'
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      # Every go.opentelemetry.io module in one update, version and security
+      # alike: the API, SDK, exporters and contrib bridges are released in step
+      # and do not build against each other across a breaking API change.
+      opentelemetry:
+        applies-to: version-updates
+        patterns:
+          - 'go.opentelemetry.io/*'
+      opentelemetry-security:
+        applies-to: security-updates
+        patterns:
+          - 'go.opentelemetry.io/*'
+      # The framework itself: a new mono release is reviewed on its own.
+      mono:
+        applies-to: version-updates
+        patterns:
+          - 'github.com/go-monolith/*'
+      # Everything else that is not a major update, in one weekly pull request.
+      go-dependencies:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+        patterns:
+          - '*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - '🤖 Dependencies'
+      - 'github-actions'
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      github-actions:
+        patterns:
+          - '*'

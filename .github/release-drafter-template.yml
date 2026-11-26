@@ -3,8 +3,10 @@
 name-template: '{{PACKAGE}} - v$RESOLVED_VERSION'
 tag-template: '{{PACKAGE}}/v$RESOLVED_VERSION'
 tag-prefix: {{PACKAGE}}/v
+# A path prefix, not a glob: the paths are passed to GitHub's commit history
+# query, which matches them literally ('v1/jwt/**' matched no commit at all).
 include-paths:
-  - {{DIRECTORY}}/**
+  - {{DIRECTORY}}
 categories:
   - title: '❗ Breaking Changes'
     labels:
@@ -16,6 +18,7 @@ categories:
     labels:
       - '🧹 Updates'
       - '🤖 Dependencies'
+      - 'dependencies'
   - title: '🐛 Fixes'
     labels:
       - '☢️ Bug'
@@ -42,6 +45,7 @@ version-resolver:
       - '📒 Documentation'
       - '☢️ Bug'
       - '🤖 Dependencies'
+      - 'dependencies'
       - '🧹 Updates'
   default: patch
 template: |

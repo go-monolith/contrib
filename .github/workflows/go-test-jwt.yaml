@@ -21,7 +21,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ['stable', 'oldstable']
+        # 'minimum' is the go directive of go.mod, the oldest Go the module
+        # supports. 'oldstable' tested nothing more than 'stable' once go.mod
+        # required a newer Go than it: the go command downloaded that newer one.
+        go-version: ['minimum', 'stable']
 
     name: jwt - Go ${{ matrix.go-version }}
 
@@ -30,7 +33,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ matrix.go-version != 'minimum' && matrix.go-version || '' }}
+          go-version-file: ${{ matrix.go-version == 'minimum' && 'v1/jwt/go.mod' || '' }}
           cache: false
 
       - name: Cache Go modules
@@ -46,6 +50,9 @@ jobs:
 
       - name: Install dependencies
         run: cd v1/jwt && go mod download
+
+      - name: Check go.mod and go.sum are tidy
+        run: cd v1/jwt && go mod tidy -diff
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9

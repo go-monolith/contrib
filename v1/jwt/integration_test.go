@@ -2,13 +2,7 @@ package jwt_test
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rsa"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -528,7 +522,7 @@ func TestJWKSMode_CompleteFlow(t *testing.T) {
 
 		// Build JWKS response
 		jwks := map[string]interface{}{
-			"keys": buildJWKSKeysHelper(keys),
+			"keys": testutil.BuildJWKSKeys(keys),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -705,7 +699,7 @@ func TestJWKSMode_KeyRotation(t *testing.T) {
 		keysMu.Unlock()
 
 		jwks := map[string]interface{}{
-			"keys": buildJWKSKeysHelper(keys),
+			"keys": testutil.BuildJWKSKeys(keys),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -942,64 +936,4 @@ func TestJWKSMode_BackgroundRefresh(t *testing.T) {
 		t.Errorf("Expected at least %d fetches (initial + 3 background), got %d",
 			expectedMin, finalCount)
 	}
-}
-
-// buildJWKSKeysHelper is a helper to build JWKS keys array from MockJWKSKey slice.
-// This is used in tests where we can't import testutil (circular dependency).
-func buildJWKSKeysHelper(keys []*testutil.MockJWKSKey) []map[string]interface{} {
-	var jwkKeys []map[string]interface{}
-
-	for _, key := range keys {
-		var jwk map[string]interface{}
-
-		switch pubKey := key.PublicKey.(type) {
-		case *rsa.PublicKey:
-			jwk = map[string]interface{}{
-				"kty": "RSA",
-				"kid": key.Kid,
-				"use": "sig",
-				"alg": "RS256",
-				"n":   base64.RawURLEncoding.EncodeToString(pubKey.N.Bytes()),
-				"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pubKey.E)).Bytes()),
-			}
-
-		case *ecdsa.PublicKey:
-			var crv string
-			switch pubKey.Curve {
-			case elliptic.P256():
-				crv = "P-256"
-			case elliptic.P384():
-				crv = "P-384"
-			case elliptic.P521():
-				crv = "P-521"
-			}
-
-			x, y := ecJWKCoordinates(pubKey)
-			jwk = map[string]interface{}{
-				"kty": "EC",
-				"kid": key.Kid,
-				"use": "sig",
-				"alg": "ES256",
-				"crv": crv,
-				"x":   x,
-				"y":   y,
-			}
-		}
-
-		jwkKeys = append(jwkKeys, jwk)
-	}
-
-	return jwkKeys
-}
-
-// ecJWKCoordinates returns the base64url x and y members of a JWK for pub,
-// each padded to the curve's coordinate size as RFC 7518 section 6.2.1 requires.
-func ecJWKCoordinates(pub *ecdsa.PublicKey) (x, y string) {
-	point, err := pub.Bytes() // uncompressed: 0x04 || X || Y
-	if err != nil {
-		panic(fmt.Sprintf("encode ECDSA public key: %v", err))
-	}
-	size := (len(point) - 1) / 2
-	return base64.RawURLEncoding.EncodeToString(point[1 : 1+size]),
-		base64.RawURLEncoding.EncodeToString(point[1+size:])
 }

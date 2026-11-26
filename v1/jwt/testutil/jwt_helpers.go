@@ -77,13 +77,13 @@ func GenerateValidJWT(key interface{}, claims map[string]interface{}) string {
 
 	// Determine the signing method based on the key type
 	var method jwt.SigningMethod
-	switch key.(type) {
+	switch k := key.(type) {
 	case []byte:
 		method = jwt.SigningMethodHS256
 	case *rsa.PrivateKey:
 		method = jwt.SigningMethodRS256
 	case *ecdsa.PrivateKey:
-		method = jwt.SigningMethodES256
+		method = ecdsaCurveParams(k.Curve).method
 	default:
 		panic("unsupported key type")
 	}
@@ -246,13 +246,13 @@ func GenerateTokenWithKid(key interface{}, kid string, claims map[string]interfa
 
 	// Determine the signing method
 	var method jwt.SigningMethod
-	switch key.(type) {
+	switch k := key.(type) {
 	case []byte:
 		method = jwt.SigningMethodHS256
 	case *rsa.PrivateKey:
 		method = jwt.SigningMethodRS256
 	case *ecdsa.PrivateKey:
-		method = jwt.SigningMethodES256
+		method = ecdsaCurveParams(k.Curve).method
 	default:
 		panic("unsupported key type")
 	}
@@ -322,25 +322,14 @@ func BuildJWKSKeys(keys []*MockJWKSKey) []map[string]interface{} {
 			}
 
 		case *ecdsa.PublicKey:
-			var crv string
-			switch pubKey.Curve {
-			case elliptic.P256():
-				crv = "P-256"
-			case elliptic.P384():
-				crv = "P-384"
-			case elliptic.P521():
-				crv = "P-521"
-			default:
-				panic(fmt.Sprintf("unsupported ECDSA curve: %v", pubKey.Curve))
-			}
-
+			params := ecdsaCurveParams(pubKey.Curve)
 			x, y := ecJWKCoordinates(pubKey)
 			jwk = map[string]interface{}{
 				"kty": "EC",
 				"kid": key.Kid,
 				"use": "sig",
-				"alg": "ES256",
-				"crv": crv,
+				"alg": params.method.Alg(),
+				"crv": params.crv,
 				"x":   x,
 				"y":   y,
 			}
@@ -365,4 +354,27 @@ func ecJWKCoordinates(pub *ecdsa.PublicKey) (x, y string) {
 	size := (len(point) - 1) / 2
 	return base64.RawURLEncoding.EncodeToString(point[1 : 1+size]),
 		base64.RawURLEncoding.EncodeToString(point[1+size:])
+}
+
+// ecdsaParams holds the JWS signing method and the JWK curve name of an ECDSA curve.
+type ecdsaParams struct {
+	method *jwt.SigningMethodECDSA
+	crv    string
+}
+
+// ecdsaCurveParams returns the signing method (RFC 7518 section 3.4) and JWK
+// curve name (section 6.2.1.1) of curve, which must be P-256, P-384 or P-521.
+// It panics on any other curve, as the helpers of this package do on a key
+// they cannot handle.
+func ecdsaCurveParams(curve elliptic.Curve) ecdsaParams {
+	switch curve {
+	case elliptic.P256():
+		return ecdsaParams{method: jwt.SigningMethodES256, crv: "P-256"}
+	case elliptic.P384():
+		return ecdsaParams{method: jwt.SigningMethodES384, crv: "P-384"}
+	case elliptic.P521():
+		return ecdsaParams{method: jwt.SigningMethodES512, crv: "P-521"}
+	default:
+		panic(fmt.Sprintf("unsupported ECDSA curve: %v", curve.Params().Name))
+	}
 }

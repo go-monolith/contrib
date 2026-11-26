@@ -30,13 +30,17 @@ change-title-escapes: '\<*_&'
 exclude-contributors:
   - dependabot
   - dependabot[bot]
+# No label resolves a major version: a major release is always set by hand, by
+# changing the draft's version before publishing it. A breaking change resolves
+# a minor version, as for a v0 module, and so does the 'major' label.
 version-resolver:
+  # Kept, with no labels: the schema gives a missing key no default.
   major:
+    labels: []
+  minor:
     labels:
       - 'major'
       - '❗ BreakingChange'
-  minor:
-    labels:
       - 'minor'
       - '✏️ Feature'
   patch:

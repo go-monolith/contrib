@@ -103,11 +103,11 @@ Each module under `v1/` is released on its own, with a tag `v1/<name>/vX.Y.Z`. G
      - `🤖 Dependencies` and `🧹 Updates`: Updates
      - `📒 Documentation`: Documentation
    - **Next version:**
-     - `❗ BreakingChange` or `major`: major
-     - `✏️ Feature` or `minor`: minor
+     - `❗ BreakingChange`, `✏️ Feature`, `major` or `minor`: minor
      - anything else: patch
+     - never major: a major release is always set by hand (step 4)
 3. Every merge to `main` updates a draft release for each module the merge changed (`go-release.yaml`).
-4. To release, review the draft on the [releases page](https://github.com/go-monolith/contrib/releases): adjust the version and notes if needed, then publish it. Publishing creates the tag on `main`. GitHub marks only one release of the repository as latest, which does not affect `go get`.
+4. To release, review the draft on the [releases page](https://github.com/go-monolith/contrib/releases): adjust the version and notes if needed, then publish it. For a major release, change the draft's tag and title to the next major version yourself. Publishing creates the tag on `main`. GitHub marks only one release of the repository as latest, which does not affect `go get`.
 
 ## Directory Structure
 

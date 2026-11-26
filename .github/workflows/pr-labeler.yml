@@ -1,0 +1,58 @@
+name: PR labeler
+
+# Labels pull requests from their conventional-commit title, so that
+# release-drafter (go-release.yaml) puts every merged change into a category of
+# the release notes and resolves the next version from it. Labels set by hand
+# are kept; the labeler only adds.
+#
+# pull_request_target runs with a token that may write labels, also on pull
+# requests from forks and from dependabot (whose pull_request runs get a
+# read-only token). It is safe here: the job checks out nothing and runs no
+# code from the pull request; it only reads the title, body and branch name.
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, synchronize]
+
+concurrency:
+  group: pr-labeler-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  autolabel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Same pinned fork as go-release.yaml, for its inline config parameter.
+      - name: Label from title
+        uses: ReneWerner87/release-drafter@6dec4ceb1fb86b6514f11a2e7a39e1dedce709d0
+        with:
+          disable-releaser: true
+          config: |
+            template: '$CHANGES'
+            # Titles may start with an issue reference ("#12 fix(jwt): ...").
+            autolabeler:
+              - label: '❗ BreakingChange'
+                title:
+                  - '/^(#\d+\s+)?[a-z]+(\([^)]*\))?!:/i'
+                body:
+                  - '/^BREAKING[ -]CHANGE:/m'
+              - label: '✏️ Feature'
+                title:
+                  - '/^(#\d+\s+)?feat(\([^)]*\))?!?:/i'
+              - label: '☢️ Bug'
+                title:
+                  - '/^(#\d+\s+)?fix(\((?!deps)[^)]*\))?!?:/i'
+              - label: '🤖 Dependencies'
+                title:
+                  - '/^(#\d+\s+)?(chore|fix|build)\(deps(-dev)?\)!?:/i'
+              - label: '📒 Documentation'
+                title:
+                  - '/^(#\d+\s+)?docs(\([^)]*\))?!?:/i'
+              - label: '🧹 Updates'
+                title:
+                  - '/^(#\d+\s+)?(chore|refactor|perf|test|ci|build|style)(\((?!deps)[^)]*\))?!?:/i'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

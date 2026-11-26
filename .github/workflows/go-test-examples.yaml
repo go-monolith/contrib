@@ -1,0 +1,61 @@
+name: go-test-examples
+
+# The examples replace the contrib modules with the local v1/ directories, so
+# this also checks that a change to a module, or to a dependency both share,
+# still builds in a real application. Before this workflow, an OpenTelemetry
+# bump broke examples/v1/otel while every check passed.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'examples/v1/**'
+      - 'v1/**/*.go'
+      - 'v1/**/go.mod'
+      - 'v1/**/go.sum'
+      - '.github/workflows/go-test-examples.yaml'
+
+concurrency:
+  group: go-test-examples-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        example: ['jwt', 'otel']
+
+    name: example ${{ matrix.example }}
+
+    defaults:
+      run:
+        working-directory: examples/v1/${{ matrix.example }}
+
+    env:
+      # Each example is built as its own module, as a user would build it.
+      GOWORK: 'off'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: examples/v1/${{ matrix.example }}/go.mod
+          cache-dependency-path: examples/v1/${{ matrix.example }}/go.sum
+
+      - name: Check go.mod and go.sum are tidy
+        run: go mod tidy -diff
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -race ./...

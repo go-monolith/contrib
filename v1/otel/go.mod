@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/go-monolith/mono v0.2.28
-	go.opentelemetry.io/contrib/bridges/otelslog v0.11.0
+	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/log v1.47.0
 	go.opentelemetry.io/otel/metric v1.47.0

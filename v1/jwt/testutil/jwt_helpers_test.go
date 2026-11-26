@@ -2,7 +2,10 @@ package testutil
 
 import (
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"testing"
 	"time"
 
@@ -50,7 +53,7 @@ func TestGenerateECDSATestKeyPair(t *testing.T) {
 	}
 
 	// Verify the public key matches the private key
-	if privateKey.X.Cmp(publicKey.X) != 0 || privateKey.Y.Cmp(publicKey.Y) != 0 {
+	if !privateKey.PublicKey.Equal(publicKey) {
 		t.Error("Public key doesn't match private key")
 	}
 }
@@ -318,15 +321,15 @@ func TestGenerateTokenWithKid(t *testing.T) {
 func TestKeyTypeDetection(t *testing.T) {
 	// Test that different key types generate tokens with correct algorithms
 	testCases := []struct {
-		name             string
-		keyGen           func() interface{}
-		expectedAlg      string
-		verificationKey  func(interface{}) interface{}
+		name            string
+		keyGen          func() interface{}
+		expectedAlg     string
+		verificationKey func(interface{}) interface{}
 	}{
 		{
-			name:        "HMAC",
-			keyGen:      func() interface{} { return GenerateHMACTestKey() },
-			expectedAlg: "HS256",
+			name:            "HMAC",
+			keyGen:          func() interface{} { return GenerateHMACTestKey() },
+			expectedAlg:     "HS256",
 			verificationKey: func(key interface{}) interface{} { return key },
 		},
 		{
@@ -374,6 +377,72 @@ func TestKeyTypeDetection(t *testing.T) {
 
 			if token.Method.Alg() != tc.expectedAlg {
 				t.Errorf("Expected algorithm %s, got: %s", tc.expectedAlg, token.Method.Alg())
+			}
+		})
+	}
+}
+
+func TestECDSACurves_SigningAndJWKS(t *testing.T) {
+	testCases := []struct {
+		curve     elliptic.Curve
+		alg       string
+		crv       string
+		coordSize int
+	}{
+		{elliptic.P256(), "ES256", "P-256", 32},
+		{elliptic.P384(), "ES384", "P-384", 48},
+		{elliptic.P521(), "ES512", "P-521", 66},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.crv, func(t *testing.T) {
+			privateKey, err := ecdsa.GenerateKey(tc.curve, rand.Reader)
+			if err != nil {
+				t.Fatalf("GenerateKey: %v", err)
+			}
+
+			// Both signers pick the algorithm that matches the curve.
+			for name, tokenString := range map[string]string{
+				"GenerateValidJWT":     GenerateValidJWT(privateKey, map[string]interface{}{"sub": "u"}),
+				"GenerateTokenWithKid": GenerateTokenWithKid(privateKey, "k1", map[string]interface{}{"sub": "u"}),
+			} {
+				token, err := jwt.Parse(tokenString, func(*jwt.Token) (interface{}, error) {
+					return &privateKey.PublicKey, nil
+				}, jwt.WithValidMethods([]string{tc.alg}))
+				if err != nil {
+					t.Fatalf("%s: parse: %v", name, err)
+				}
+				if token.Method.Alg() != tc.alg {
+					t.Errorf("%s: alg = %s, want %s", name, token.Method.Alg(), tc.alg)
+				}
+			}
+
+			jwks := BuildJWKSKeys([]*MockJWKSKey{{Kid: "k1", PublicKey: &privateKey.PublicKey}})
+			if len(jwks) != 1 {
+				t.Fatalf("BuildJWKSKeys returned %d keys, want 1", len(jwks))
+			}
+			jwk := jwks[0]
+			if jwk["alg"] != tc.alg || jwk["crv"] != tc.crv {
+				t.Errorf("alg, crv = %v, %v; want %s, %s", jwk["alg"], jwk["crv"], tc.alg, tc.crv)
+			}
+
+			// x and y have the fixed size of the curve (RFC 7518 section 6.2.1.2),
+			// and together with the curve they are the public key.
+			x, errX := base64.RawURLEncoding.DecodeString(jwk["x"].(string))
+			y, errY := base64.RawURLEncoding.DecodeString(jwk["y"].(string))
+			if errX != nil || errY != nil {
+				t.Fatalf("decode x, y: %v, %v", errX, errY)
+			}
+			if len(x) != tc.coordSize || len(y) != tc.coordSize {
+				t.Errorf("len(x), len(y) = %d, %d; want %d", len(x), len(y), tc.coordSize)
+			}
+			point := append(append([]byte{4}, x...), y...)
+			parsed, err := ecdsa.ParseUncompressedPublicKey(tc.curve, point)
+			if err != nil {
+				t.Fatalf("ParseUncompressedPublicKey: %v", err)
+			}
+			if !parsed.Equal(&privateKey.PublicKey) {
+				t.Error("JWK x, y do not match the public key")
 			}
 		})
 	}

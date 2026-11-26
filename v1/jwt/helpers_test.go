@@ -143,11 +143,8 @@ func TestParseECDSAPublicKeyFromPEM_PKIX(t *testing.T) {
 	if parsedKey.Curve != expectedKey.Curve {
 		t.Error("Parsed key curve doesn't match expected")
 	}
-	if parsedKey.X.Cmp(expectedKey.X) != 0 {
-		t.Error("Parsed key X coordinate doesn't match expected")
-	}
-	if parsedKey.Y.Cmp(expectedKey.Y) != 0 {
-		t.Error("Parsed key Y coordinate doesn't match expected")
+	if !parsedKey.Equal(expectedKey) {
+		t.Error("Parsed key doesn't match expected")
 	}
 }
 

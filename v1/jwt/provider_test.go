@@ -81,7 +81,7 @@ func TestStaticKeyProvider_ECDSAPublicKey(t *testing.T) {
 	}
 
 	// Verify it's the same key
-	if ecdsaKey.X.Cmp(publicKey.X) != 0 || ecdsaKey.Y.Cmp(publicKey.Y) != 0 {
+	if !ecdsaKey.Equal(publicKey) {
 		t.Error("Returned ECDSA key doesn't match the original")
 	}
 }

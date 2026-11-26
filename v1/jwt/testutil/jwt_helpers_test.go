@@ -50,7 +50,7 @@ func TestGenerateECDSATestKeyPair(t *testing.T) {
 	}
 
 	// Verify the public key matches the private key
-	if privateKey.X.Cmp(publicKey.X) != 0 || privateKey.Y.Cmp(publicKey.Y) != 0 {
+	if !privateKey.PublicKey.Equal(publicKey) {
 		t.Error("Public key doesn't match private key")
 	}
 }

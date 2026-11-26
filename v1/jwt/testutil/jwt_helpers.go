@@ -334,14 +334,15 @@ func BuildJWKSKeys(keys []*MockJWKSKey) []map[string]interface{} {
 				panic(fmt.Sprintf("unsupported ECDSA curve: %v", pubKey.Curve))
 			}
 
+			x, y := ecJWKCoordinates(pubKey)
 			jwk = map[string]interface{}{
 				"kty": "EC",
 				"kid": key.Kid,
 				"use": "sig",
 				"alg": "ES256",
 				"crv": crv,
-				"x":   base64.RawURLEncoding.EncodeToString(pubKey.X.Bytes()),
-				"y":   base64.RawURLEncoding.EncodeToString(pubKey.Y.Bytes()),
+				"x":   x,
+				"y":   y,
 			}
 
 		default:
@@ -352,4 +353,16 @@ func BuildJWKSKeys(keys []*MockJWKSKey) []map[string]interface{} {
 	}
 
 	return jwkKeys
+}
+
+// ecJWKCoordinates returns the base64url x and y members of a JWK for pub,
+// each padded to the curve's coordinate size as RFC 7518 section 6.2.1 requires.
+func ecJWKCoordinates(pub *ecdsa.PublicKey) (x, y string) {
+	point, err := pub.Bytes() // uncompressed: 0x04 || X || Y
+	if err != nil {
+		panic(fmt.Sprintf("encode ECDSA public key: %v", err))
+	}
+	size := (len(point) - 1) / 2
+	return base64.RawURLEncoding.EncodeToString(point[1 : 1+size]),
+		base64.RawURLEncoding.EncodeToString(point[1+size:])
 }

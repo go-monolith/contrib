@@ -26,6 +26,11 @@ updates:
       - 'go'
     commit-message:
       prefix: 'chore(deps)'
+    ignore:
+      # The examples replace the contrib modules with the local v1/ directories
+      # and require them at placeholder versions; a bump would change nothing.
+      # No v1/ module requires them.
+      - dependency-name: 'github.com/go-monolith/contrib/*'
     groups:
       # Every go.opentelemetry.io module in one update, version and security
       # alike: the API, SDK, exporters and contrib bridges are released in step
@@ -42,7 +47,7 @@ updates:
       mono:
         applies-to: version-updates
         patterns:
-          - 'github.com/go-monolith/*'
+          - 'github.com/go-monolith/mono'
       # Everything else that is not a major update, in one weekly pull request.
       go-dependencies:
         applies-to: version-updates
@@ -59,7 +64,6 @@ updates:
       day: monday
     labels:
       - '🤖 Dependencies'
-      - 'github-actions'
     commit-message:
       prefix: 'chore(deps)'
     groups:

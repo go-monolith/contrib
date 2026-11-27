@@ -29,16 +29,16 @@ jobs:
     name: jwt - Go ${{ matrix.go-version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version != 'minimum' && matrix.go-version || '' }}
           go-version-file: ${{ matrix.go-version == 'minimum' && 'v1/jwt/go.mod' || '' }}
           cache: false
 
       - name: Cache Go modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
